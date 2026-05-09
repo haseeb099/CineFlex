@@ -4,61 +4,31 @@ import { createGroq } from '@ai-sdk/groq'
 import { sanitizeInput } from '@/lib/utils/sanitize'
 import { checkRateLimit } from '@/lib/utils/rateLimit'
 
-const groq = createGroq({
-  apiKey: process.env.GROQ_API_KEY,
-})
+const ENHANCE_PROMPT_SYSTEM = `You are an expert screenwriter. Transform raw ideas into richly detailed, cinematic scene descriptions.
 
-const ENHANCE_PROMPT_SYSTEM = `You are an expert screenwriter and scene breakdown specialist for CineFlex, an AI filmmaking platform.
+RULES:
+1. Add sensory details (visuals, sounds, lighting)
+2. Clarify character emotions and motivations
+3. Include time of day, atmosphere
+4. Add dramatic tension
+5. Keep the core idea intact
+6. Output 2-3 paragraphs max
 
-Your task is to take a user's raw idea, rough scene description, or simple prompt and transform it into a richly detailed, cinematically viable scene description.
+Return ONLY the enhanced scene, no commentary.`
 
-ENHANCEMENT RULES:
-1. Add sensory details (visuals, sounds, textures, lighting)
-2. Clarify character motivations and emotional states
-3. Suggest specific time of day, weather, and atmosphere
-4. Add subtext and dramatic tension where appropriate
-5. Include camera-friendly visual moments
-6. Keep the user's core idea intact - enhance, don't replace
-7. If the input is vague, make creative but logical choices
-8. Output should be 2-4 paragraphs, rich but not overwhelming
+const SPLIT_SCENES_SYSTEM = `Analyze if text contains multiple scenes (location change, time jump, different focus).
 
-If the prompt is VERY long (suggesting multiple scenes), you should:
-1. Identify natural scene breaks
-2. Structure each scene separately with clear headers like "SCENE 1:", "SCENE 2:", etc.
-3. Each scene should have its own location, time, and dramatic focus
-4. Maximum 6 scenes per breakdown
-
-Return ONLY the enhanced scene description(s), no meta-commentary.`
-
-const SPLIT_SCENES_SYSTEM = `You are a screenplay structure expert for CineFlex.
-
-Analyze the given text and determine if it contains MULTIPLE distinct scenes or moments that should be processed separately.
-
-A scene break is indicated by:
-- Change of location
-- Significant time jump
-- Different dramatic focus/conflict
-- Natural narrative breaks
-
-Return a JSON object:
+Return JSON:
 {
   "shouldSplit": boolean,
   "sceneCount": number,
-  "scenes": [
-    {
-      "title": "Brief descriptive title for this scene",
-      "content": "The extracted/enhanced content for this scene",
-      "suggestedOrder": number
-    }
-  ]
+  "scenes": [{"title": "string", "content": "string", "suggestedOrder": number}]
 }
 
-If shouldSplit is false, return a single scene with the enhanced content.
-Maximum 6 scenes. If content suggests more, consolidate logically.`
+Max 4 scenes. No markdown, just JSON.`
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limit check
     const ip = request.headers.get('x-forwarded-for') || 'anonymous'
     const rateLimitResult = checkRateLimit(ip, 'enhance')
     
@@ -69,10 +39,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check API key
     if (!process.env.GROQ_API_KEY) {
       return NextResponse.json(
-        { error: 'API not configured. Add GROQ_API_KEY to environment variables.' },
+        { error: 'API not configured. Add GROQ_API_KEY in Settings > Vars.' },
         { status: 500 }
       )
     }
@@ -81,57 +50,69 @@ export async function POST(request: NextRequest) {
     const { prompt, mode = 'enhance' } = body
 
     if (!prompt || typeof prompt !== 'string') {
-      return NextResponse.json(
-        { error: 'Prompt is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }
 
-    const sanitizedPrompt = sanitizeInput(prompt, 10000) // Allow longer prompts for multi-scene
+    const sanitizedPrompt = sanitizeInput(prompt, 5000)
+    const groq = createGroq({ apiKey: process.env.GROQ_API_KEY })
 
     if (mode === 'split') {
-      // First, analyze if we should split into multiple scenes
-      const { text: splitAnalysis } = await generateText({
-        model: groq('llama-3.3-70b-versatile'),
-        system: SPLIT_SCENES_SYSTEM,
-        prompt: sanitizedPrompt,
-        temperature: 0.3,
-      })
-
       try {
-        // Extract JSON from the response
+        const { text: splitAnalysis } = await generateText({
+          model: groq('llama-3.3-70b-versatile'),
+          system: SPLIT_SCENES_SYSTEM,
+          prompt: sanitizedPrompt,
+          temperature: 0.3,
+          maxTokens: 2000,
+        })
+
         const jsonMatch = splitAnalysis.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
-          const result = JSON.parse(jsonMatch[0])
-          return NextResponse.json(result)
+          return NextResponse.json(JSON.parse(jsonMatch[0]))
         }
-      } catch {
-        // If JSON parsing fails, return as single scene
-        return NextResponse.json({
-          shouldSplit: false,
-          sceneCount: 1,
-          scenes: [{
-            title: 'Scene 1',
-            content: sanitizedPrompt,
-            suggestedOrder: 1
-          }]
-        })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : ''
+        if (msg.includes('rate_limit') || msg.includes('Rate limit')) {
+          return NextResponse.json(
+            { error: 'API rate limit reached. Please wait and try again.' },
+            { status: 429 }
+          )
+        }
       }
+      
+      // Fallback - don't split
+      return NextResponse.json({
+        shouldSplit: false,
+        sceneCount: 1,
+        scenes: [{ title: 'Scene 1', content: sanitizedPrompt, suggestedOrder: 1 }]
+      })
     }
 
     // Standard enhancement
-    const { text: enhanced } = await generateText({
-      model: groq('llama-3.3-70b-versatile'),
-      system: ENHANCE_PROMPT_SYSTEM,
-      prompt: `Enhance this scene description:\n\n${sanitizedPrompt}`,
-      temperature: 0.7,
-    })
+    try {
+      const { text: enhanced } = await generateText({
+        model: groq('llama-3.3-70b-versatile'),
+        system: ENHANCE_PROMPT_SYSTEM,
+        prompt: `Enhance: ${sanitizedPrompt}`,
+        temperature: 0.7,
+        maxTokens: 1500,
+      })
 
-    return NextResponse.json({
-      enhanced,
-      originalLength: prompt.length,
-      enhancedLength: enhanced.length,
-    })
+      return NextResponse.json({
+        enhanced,
+        originalLength: prompt.length,
+        enhancedLength: enhanced.length,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : ''
+      if (msg.includes('rate_limit') || msg.includes('Rate limit')) {
+        return NextResponse.json(
+          { error: 'API rate limit reached. Please wait a few minutes and try again.' },
+          { status: 429 }
+        )
+      }
+      throw err
+    }
 
   } catch (error) {
     console.error('Enhance prompt error:', error)

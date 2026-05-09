@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     const sanitized = sanitizeInput(sceneInput)
     if (!validateMinLength(sanitized, 10)) {
       return NextResponse.json(
-        { error: 'Scene too short. Give me something to work with.' },
+        { error: 'Scene description too short. Please provide more detail.' },
         { status: 400 }
       )
     }
@@ -72,9 +72,26 @@ export async function POST(req: NextRequest) {
       }
     })
   } catch (err) {
-    console.error('[analyze] error:', err instanceof Error ? err.message : 'unknown')
+    const errorMessage = err instanceof Error ? err.message : 'unknown'
+    console.error('[analyze] error:', errorMessage)
+    
+    // Provide specific error messages
+    if (errorMessage.includes('rate_limit') || errorMessage.includes('Rate limit')) {
+      return NextResponse.json(
+        { error: 'API rate limit reached. Please wait a few minutes and try again, or upgrade your Groq API tier.' },
+        { status: 429 }
+      )
+    }
+    
+    if (errorMessage.includes('GROQ_API_KEY')) {
+      return NextResponse.json(
+        { error: 'Groq API key not configured. Please add it in Settings > Vars.' },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json(
-      { error: 'Analysis failed. Check your scene and try again.' },
+      { error: 'Analysis failed. Please try again with a different scene description.' },
       { status: 500 }
     )
   }
