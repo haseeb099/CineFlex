@@ -408,7 +408,8 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
       <div className="h-screen flex flex-col bg-[#0a0a0f]" suppressHydrationWarning>
         <Navbar
           projectTitle={project.title}
-          showExport={!!analysisResult}
+          projectData={project}
+          showExport={true}
           onExport={handleExportScene}
         />
         

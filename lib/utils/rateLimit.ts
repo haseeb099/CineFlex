@@ -22,6 +22,9 @@ const ENDPOINT_CONFIGS: Record<string, RateLimitConfig> = {
   enhance: { maxRequests: 15, windowMs: 60000 },
   storyboard: { maxRequests: 10, windowMs: 60000 },
   audio: { maxRequests: 10, windowMs: 60000 },
+  video: { maxRequests: 5, windowMs: 120000 }, // Video generation is expensive
+  export: { maxRequests: 20, windowMs: 60000 },
+  motion: { maxRequests: 10, windowMs: 60000 },
 }
 
 /**

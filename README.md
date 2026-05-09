@@ -248,10 +248,12 @@ CineFlex transforms raw scene ideas into complete cinematic packages through an 
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/generate-storyboard` | POST | Generates storyboard frame images via Runware |
-| `/api/generate-audio` | POST | Generates audio mood via ElevenLabs |
+| `/api/generate-storyboard` | POST | Generates storyboard frame images via Runware FLUX |
+| `/api/generate-audio` | POST | Generates scene music via ElevenLabs Music API |
+| `/api/generate-video` | POST | Generates video clips via Runware image-to-video |
 | `/api/generate-motion` | POST | Generates motion teaser prompts |
 | `/api/export` | POST | Exports complete cinematic package |
+| `/api/export-bundle` | POST | Exports full project (Markdown, JSON, CSV shot list) |
 
 ### Project Management
 

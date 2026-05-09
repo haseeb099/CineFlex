@@ -5,14 +5,15 @@ export async function POST(req: NextRequest) {
   try {
     // Rate limiting
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
-    if (!checkRateLimit(ip, { maxRequests: 5, windowMs: 60000 })) {
+    const rateLimitResult = checkRateLimit(ip, 'audio')
+    if (!rateLimitResult.allowed) {
       return NextResponse.json(
-        { error: 'Rate limit exceeded for audio generation.' },
+        { error: `Rate limit exceeded. Wait ${Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)} seconds.` },
         { status: 429 }
       )
     }
 
-    const { audioPrompt, voiceId } = await req.json()
+    const { audioPrompt, mood, genre, duration = 30 } = await req.json()
 
     if (!audioPrompt) {
       return NextResponse.json(
@@ -26,29 +27,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         audioUrl: null,
         description: audioPrompt,
-        mode: 'description-only'
+        mood: mood || 'cinematic',
+        genre: genre || 'soundtrack',
+        duration,
+        mode: 'description-only',
+        message: 'ElevenLabs API key not configured. Add ELEVENLABS_API_KEY to enable music generation.'
       })
     }
 
-    const selectedVoice = voiceId || 'pNInz6obpgDQGcFmaJgB' // Adam voice
+    // Build the music generation prompt
+    const musicPrompt = `${mood || 'cinematic'} ${genre || 'orchestral'} soundtrack: ${audioPrompt}. Professional film score quality, emotional depth, building tension and release.`
 
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoice}`,
-      {
-        method: 'POST',
-        headers: {
-          'xi-api-key': process.env.ELEVENLABS_API_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: `Scene audio direction: ${audioPrompt}`,
-          model_id: 'eleven_turbo_v2',
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 }
-        })
-      }
-    )
+    // Use ElevenLabs Sound Effects API for music generation
+    // The music API endpoint
+    const response = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
+      method: 'POST',
+      headers: {
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: musicPrompt,
+        duration_seconds: Math.min(duration, 22), // Max 22 seconds for sound generation
+        prompt_influence: 0.5
+      })
+    })
 
     if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[audio] ElevenLabs error:', response.status, errorText)
+      
+      // If sound generation fails, try text-to-speech as fallback for narration
+      if (response.status === 422 || response.status === 400) {
+        // Return description mode if music API not available
+        return NextResponse.json({
+          audioUrl: null,
+          description: audioPrompt,
+          mood: mood || 'cinematic',
+          genre: genre || 'soundtrack',
+          duration,
+          mode: 'description-only',
+          message: 'Music generation not available. Audio mood description provided instead.'
+        })
+      }
+      
       throw new Error(`ElevenLabs error: ${response.status}`)
     }
 
@@ -57,13 +79,18 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       audioUrl: `data:audio/mpeg;base64,${base64Audio}`,
+      mood: mood || 'cinematic',
+      genre: genre || 'soundtrack',
+      duration,
       mode: 'generated'
     })
   } catch (err) {
     console.error('[audio] error:', err instanceof Error ? err.message : 'unknown')
-    return NextResponse.json(
-      { error: 'Audio generation failed', audioUrl: null },
-      { status: 500 }
-    )
+    return NextResponse.json({
+      error: 'Audio generation failed',
+      audioUrl: null,
+      mode: 'error',
+      message: err instanceof Error ? err.message : 'Unknown error'
+    }, { status: 500 })
   }
 }
