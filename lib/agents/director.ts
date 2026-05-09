@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { generateText } from 'ai'
+import { createGroq } from '@ai-sdk/groq'
 import type { StyleMemory } from '../types'
 
 const DIRECTOR_PROMPT = `You are the Director Agent inside DirectorOS. Your lens is cinematic vision, emotional architecture, and directorial intent.
@@ -16,25 +17,20 @@ Output 3-5 specific directorial observations. Be concrete. Reference real direct
 Format as plain text paragraphs. Be terse. Filmmaker language only.`
 
 export async function directorAgent(scene: string, memory: StyleMemory): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
     return '[DIRECTOR AGENT]\nAPI key not configured. Unable to analyze.'
   }
 
-  const client = new Anthropic({ apiKey })
+  const groq = createGroq({ apiKey })
   
   try {
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 800,
+    const { text } = await generateText({
+      model: groq('llama-3.3-70b-versatile'),
       system: DIRECTOR_PROMPT,
-      messages: [{
-        role: 'user',
-        content: `Style memory: ${JSON.stringify(memory)}\n\nScene: ${scene}`
-      }]
+      prompt: `Style memory: ${JSON.stringify(memory)}\n\nScene: ${scene}`
     })
     
-    const text = response.content[0].type === 'text' ? response.content[0].text : ''
     return `[DIRECTOR AGENT]\n${text}`
   } catch (error) {
     console.error('[Director Agent Error]:', error instanceof Error ? error.message : 'Unknown error')

@@ -13,6 +13,9 @@ const DEFAULT_MEMORY: StyleMemory = {
   recurringMotifs: [],
   characterNotes: {},
   visualStyle: 'undefined',
+  visualMotifs: [],
+  soundSignatures: [],
+  recurringThemes: [],
   lastUpdated: Date.now()
 }
 
@@ -47,9 +50,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Check API key
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.GROQ_API_KEY) {
       return NextResponse.json(
-        { error: 'API not configured. Add ANTHROPIC_API_KEY to environment variables.' },
+        { error: 'API not configured. Add GROQ_API_KEY to environment variables.' },
         { status: 500 }
       )
     }

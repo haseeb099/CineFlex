@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@ai-sdk/groq": "^3.0.39",
-    "@anthropic-ai/sdk": "^0.95.1",
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",

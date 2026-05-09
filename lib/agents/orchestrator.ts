@@ -1,6 +1,7 @@
 // lib/agents/orchestrator.ts
 // SERVER-SIDE ONLY - never import in client components
-import Anthropic from '@anthropic-ai/sdk'
+import { generateText } from 'ai'
+import { createGroq } from '@ai-sdk/groq'
 import { directorAgent } from './director'
 import { scriptDoctorAgent } from './scriptDoctor'
 import { cinematographyAgent } from './cinematography'
@@ -65,6 +66,11 @@ Output ONLY valid JSON matching this schema exactly:
     "tempo": "string",
     "instruments": ["string"],
     "mood": "string",
+    "acousticWorld": "string",
+    "scoreDirection": "string",
+    "sfxElements": ["string"],
+    "silenceUsage": "string",
+    "voiceTone": "string",
     "promptForGeneration": "string (detailed ElevenLabs/music gen prompt)"
   },
   "motionTeaserPrompt": "string (detailed prompt for image-to-video generation)"
@@ -77,12 +83,12 @@ export async function runOrchestrator(
   styleMemory: StyleMemory,
   projectContext: string
 ): Promise<AnalysisResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not configured')
+    throw new Error('GROQ_API_KEY is not configured')
   }
 
-  const client = new Anthropic({ apiKey })
+  const groq = createGroq({ apiKey })
 
   // Run all agents in parallel for speed
   const [directorOut, scriptOut, cinemaOut, soundOut, producerOut] = await Promise.allSettled([
@@ -99,13 +105,10 @@ export async function runOrchestrator(
     .join('\n\n---AGENT SEPARATOR---\n\n')
 
   // Orchestrator synthesizes all agent outputs
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 4000,
+  const { text: rawText } = await generateText({
+    model: groq('llama-3.3-70b-versatile'),
     system: ORCHESTRATOR_SYSTEM_PROMPT,
-    messages: [{
-      role: 'user',
-      content: `PROJECT CONTEXT: ${projectContext}
+    prompt: `PROJECT CONTEXT: ${projectContext}
 
 STYLE MEMORY: ${JSON.stringify(styleMemory, null, 2)}
 
@@ -116,11 +119,8 @@ AGENT OUTPUTS FROM SPECIALIST TEAM:
 ${agentOutputs}
 
 Now synthesize all of this into the final analysis JSON.`
-    }]
   })
 
-  const rawText = response.content[0].type === 'text' ? response.content[0].text : ''
-  
   // Clean JSON (strip any accidental markdown fences)
   const cleaned = rawText.replace(/```json\n?|\n?```/g, '').trim()
   
@@ -143,6 +143,11 @@ Now synthesize all of this into the final analysis JSON.`
         tempo: 'moderate',
         instruments: [],
         mood: 'contemplative',
+        acousticWorld: '',
+        scoreDirection: '',
+        sfxElements: [],
+        silenceUsage: '',
+        voiceTone: '',
         promptForGeneration: ''
       },
       motionTeaserPrompt: ''
@@ -167,17 +172,29 @@ Now synthesize all of this into the final analysis JSON.`
   const storyboardFramePrompts: StoryboardFrame[] = ((parsed.storyboardFramePrompts as StoryboardFrame[]) || []).map((f, i) => ({
     ...f,
     id: `frame_${Date.now()}_${i}`,
+    cameraMovement: f.cameraMove || '',
     status: 'pending' as const
   }))
 
-  // Ensure audio mood has an ID
-  const rawAudioMood = parsed.audioMood as AudioMood | undefined
+  // Add IDs to shot list
+  const shotList: ShotListItem[] = ((parsed.shotList as ShotListItem[]) || []).map((s, i) => ({
+    ...s,
+    id: `shot_${Date.now()}_${i}`
+  }))
+
+  // Ensure audio mood has an ID and all fields
+  const rawAudioMood = parsed.audioMood as Partial<AudioMood> | undefined
   const audioMood: AudioMood = {
     id: uuid(),
     genre: rawAudioMood?.genre || 'ambient',
     tempo: rawAudioMood?.tempo || 'moderate',
     instruments: rawAudioMood?.instruments || [],
     mood: rawAudioMood?.mood || 'contemplative',
+    acousticWorld: rawAudioMood?.acousticWorld || '',
+    scoreDirection: rawAudioMood?.scoreDirection || '',
+    sfxElements: rawAudioMood?.sfxElements || [],
+    silenceUsage: rawAudioMood?.silenceUsage || '',
+    voiceTone: rawAudioMood?.voiceTone || '',
     promptForGeneration: rawAudioMood?.promptForGeneration || ''
   }
 
@@ -188,7 +205,7 @@ Now synthesize all of this into the final analysis JSON.`
     suggestions,
     styleMemoryUpdate: (parsed.styleMemoryUpdate as Partial<StyleMemory>) || {},
     storyboardFramePrompts,
-    shotList: (parsed.shotList as ShotListItem[]) || [],
+    shotList,
     audioMood,
     motionTeaserPrompt: (parsed.motionTeaserPrompt as string) || ''
   }
