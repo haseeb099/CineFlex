@@ -2,7 +2,7 @@ import { generateText } from 'ai'
 import { createGroq } from '@ai-sdk/groq'
 import type { StyleMemory } from '../types'
 
-const SOUND_PROMPT = `You are the Sound Design Agent inside DirectorOS. You think in texture, silence, rhythm, and frequency.
+const SOUND_PROMPT = `You are the Sound Design Agent inside CineFlex. You think in texture, silence, rhythm, and frequency.
 
 Analyze the scene for:
 - What is the acoustic world of this scene? (reverb space, ambience)

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
   Pencil,
@@ -381,8 +381,7 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
 
                 <ScrollArea className="flex-1">
                   <div className="p-6">
-                    <AnimatePresence mode="wait">
-                      {/* INPUT TAB */}
+{/* INPUT TAB */}
                       <TabsContent value="input" className="mt-0">
                         <motion.div
                           initial={{ opacity: 0, y: 10 }}
@@ -399,14 +398,38 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                             </p>
                           </div>
 
-                          <SceneInput
-                            value={sceneInput}
-                            onChange={setSceneInput}
-                            projectContext={projectContext}
-                            onProjectContextChange={setProjectContext}
-                            onAnalyze={handleAnalyze}
-                            isAnalyzing={isAnalyzing}
-                          />
+<SceneInput
+  value={sceneInput}
+  onChange={setSceneInput}
+  projectContext={projectContext}
+  onProjectContextChange={setProjectContext}
+  onAnalyze={handleAnalyze}
+  isAnalyzing={isAnalyzing}
+  onSplitScenes={(scenes) => {
+    // Create new scenes for each split
+    scenes.forEach((scene, index) => {
+      if (index === 0) {
+        // Use current scene for the first one
+        setSceneInput(scene.content)
+        if (currentSceneId && project) {
+          updateScene(project.id, currentSceneId, { 
+            rawInput: scene.content,
+            title: scene.title 
+          })
+        }
+      } else {
+        // Create new scenes for the rest
+        if (project) {
+          const newScene = addScene(project.id)
+          updateScene(project.id, newScene.id, { 
+            rawInput: scene.content,
+            title: scene.title 
+          })
+        }
+      }
+    })
+  }}
+  />
 
                           {isAnalyzing && (
                             <motion.div
@@ -662,10 +685,9 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                               </a>
                             </div>
                           </motion.div>
-                        )}
-                      </TabsContent>
-                    </AnimatePresence>
-                  </div>
+)}
+  </TabsContent>
+  </div>
                 </ScrollArea>
               </Tabs>
             )}

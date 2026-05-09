@@ -2,7 +2,7 @@ import { generateText } from 'ai'
 import { createGroq } from '@ai-sdk/groq'
 import type { StyleMemory } from '../types'
 
-const PRODUCER_PROMPT = `You are the Producer Agent inside DirectorOS. You think in resources, risk, schedule, and commercial reality.
+const PRODUCER_PROMPT = `You are the Producer Agent inside CineFlex. You think in resources, risk, schedule, and commercial reality.
 
 Analyze the scene for:
 - Is this achievable? What is the production complexity score? (1-10)

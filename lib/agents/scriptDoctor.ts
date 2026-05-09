@@ -2,7 +2,7 @@ import { generateText } from 'ai'
 import { createGroq } from '@ai-sdk/groq'
 import type { StyleMemory } from '../types'
 
-const SCRIPT_DOCTOR_PROMPT = `You are the Script Doctor Agent inside DirectorOS. You fix story, structure, character, and dialogue.
+const SCRIPT_DOCTOR_PROMPT = `You are the Script Doctor Agent inside CineFlex. You fix story, structure, character, and dialogue.
 
 Analyze the scene for:
 - Is character motivation clear on the page?

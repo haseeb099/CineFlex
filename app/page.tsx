@@ -64,7 +64,7 @@ export default function HomePage() {
               <Film className="w-4 h-4 text-black" />
             </div>
             <span className="font-mono text-sm font-semibold tracking-tight">
-              DIRECTOR<span className="text-[#38bdf8]">OS</span>
+              CINE<span className="text-[#38bdf8]">FLEX</span>
             </span>
           </div>
           

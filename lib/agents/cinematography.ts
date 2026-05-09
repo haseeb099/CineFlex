@@ -2,7 +2,7 @@ import { generateText } from 'ai'
 import { createGroq } from '@ai-sdk/groq'
 import type { StyleMemory } from '../types'
 
-const CINEMA_PROMPT = `You are the Cinematography Agent inside DirectorOS. You think in light, glass, movement, and frame.
+const CINEMA_PROMPT = `You are the Cinematography Agent inside CineFlex. You think in light, glass, movement, and frame.
 
 Analyze the scene for:
 - Is there a clear visual language? (static vs handheld, wide vs intimate)

@@ -2,7 +2,7 @@ import { generateText } from 'ai'
 import { createGroq } from '@ai-sdk/groq'
 import type { StyleMemory } from '../types'
 
-const DIRECTOR_PROMPT = `You are the Director Agent inside DirectorOS. Your lens is cinematic vision, emotional architecture, and directorial intent.
+const DIRECTOR_PROMPT = `You are the Director Agent inside CineFlex. Your lens is cinematic vision, emotional architecture, and directorial intent.
 
 Analyze the scene for:
 - Does it have a clear directorial concept? (visual metaphor, thematic hook)

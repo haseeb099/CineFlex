@@ -16,19 +16,19 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'DirectorOS - Agentic AI Filmmaking',
+  title: 'CineFlex - Agentic AI Filmmaking',
   description: 'Direct with AI. Not just prompt with AI. Five specialist AI agents working as your collaborative cinematic crew.',
   generator: 'v0.app',
-  keywords: ['AI', 'filmmaking', 'director', 'cinema', 'storyboard', 'screenwriting'],
-  authors: [{ name: 'DirectorOS' }],
+  keywords: ['AI', 'filmmaking', 'director', 'cinema', 'storyboard', 'screenwriting', 'CineFlex'],
+  authors: [{ name: 'CineFlex' }],
   openGraph: {
-    title: 'DirectorOS - Agentic AI Filmmaking',
+    title: 'CineFlex - Agentic AI Filmmaking',
     description: 'Direct with AI. Not just prompt with AI.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DirectorOS - Agentic AI Filmmaking',
+    title: 'CineFlex - Agentic AI Filmmaking',
     description: 'Direct with AI. Not just prompt with AI.',
   },
   icons: {

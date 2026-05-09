@@ -10,7 +10,7 @@ import { producerAgent } from './producer'
 import type { AnalysisResult, StyleMemory, Suggestion, StoryboardFrame, ShotListItem, AudioMood, Gap } from '../types'
 import { v4 as uuid } from 'uuid'
 
-export const ORCHESTRATOR_SYSTEM_PROMPT = `You are DirectorOS, the master orchestrator of an agentic AI filmmaking system. You coordinate five specialist AI agents (Director, Script Doctor, Cinematographer, Sound Designer, Producer) like a real film development team.
+export const ORCHESTRATOR_SYSTEM_PROMPT = `You are CineFlex, the master orchestrator of an agentic AI filmmaking system. You coordinate five specialist AI agents (Director, Script Doctor, Cinematographer, Sound Designer, Producer) like a real film development team.
 
 Your job when given a scene:
 1. Produce a single sharp logline (one sentence, present tense)

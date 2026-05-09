@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* DirectorOS Cinematic Theme */
+  /* CineFlex Cinematic Theme */
   --bg-primary: #0a0a0f;
   --bg-secondary: #111118;
   --bg-surface: #1a1a25;
@@ -125,8 +125,14 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+  }
+  html {
+    overflow-y: auto;
+    scroll-behavior: smooth;
   }
 }
 
