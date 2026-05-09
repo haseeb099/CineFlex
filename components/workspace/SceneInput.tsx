@@ -233,7 +233,7 @@ Tip: Paste a long story and click 'Split into Scenes' to break it into multiple 
         <p className="text-xs text-[#52526b]">
           {value.length < 10 
             ? 'Enter at least 10 characters to analyze'
-            : '~8-12 seconds for full crew analysis'
+            : '~10-15 seconds for 9-agent crew analysis'
           }
         </p>
         
@@ -269,7 +269,7 @@ Tip: Paste a long story and click 'Split into Scenes' to break it into multiple 
               className="text-white hover:bg-white/5 cursor-pointer"
             >
               <Sparkles className="w-4 h-4 mr-2 text-[#c084fc]" />
-              Full Analysis (All 5 Agents)
+              Full Analysis (All 9 Agents)
             </DropdownMenuItem>
             <DropdownMenuItem 
               onClick={() => {

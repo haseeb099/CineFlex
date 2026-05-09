@@ -161,8 +161,8 @@ export default function HomePage() {
             
             {/* Subheadline */}
             <p className="text-lg md:text-xl text-[#a1a1bc] mb-8 max-w-2xl mx-auto leading-relaxed">
-              Five specialist AI agents work as your collaborative cinematic crew. 
-              They analyze, critique, and elevate your scenes together.
+              Nine specialist AI agents work as your collaborative cinematic crew. 
+              Director, Script Doctor, Cinematographer, Sound Designer, Producer, Editor, Storyboard Artist, Continuity Supervisor, and Marketing — all analyzing, critiquing, and elevating your scenes together.
             </p>
             
             {/* CTA */}
@@ -218,10 +218,10 @@ export default function HomePage() {
             <div className="w-12 h-12 rounded-xl bg-[#38bdf8]/10 flex items-center justify-center mb-4">
               <Brain className="w-6 h-6 text-[#38bdf8]" />
             </div>
-            <h3 className="text-lg font-semibold text-white mb-2">Agentic Crew</h3>
+            <h3 className="text-lg font-semibold text-white mb-2">9-Agent Crew</h3>
             <p className="text-sm text-[#a1a1bc] leading-relaxed">
-              Director, Script Doctor, Cinematographer, Sound Designer, and Producer 
-              agents collaborate like a real film development team.
+              Director, Script Doctor, Cinematographer, Sound Designer, Producer, Editor, 
+              Storyboard Artist, Continuity, and Marketing agents collaborate like a real production team.
             </p>
           </motion.div>
 

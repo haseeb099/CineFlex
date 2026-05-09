@@ -7,10 +7,14 @@ import { scriptDoctorAgent } from './scriptDoctor'
 import { cinematographyAgent } from './cinematography'
 import { soundDesignAgent } from './soundDesign'
 import { producerAgent } from './producer'
+import { editorAgent } from './editor'
+import { continuityAgent } from './continuity'
+import { marketingAgent } from './marketing'
+import { storyboardArtistAgent } from './storyboardArtist'
 import type { AnalysisResult, StyleMemory, Suggestion, StoryboardFrame, ShotListItem, AudioMood, Gap } from '../types'
 import { v4 as uuid } from 'uuid'
 
-export const ORCHESTRATOR_SYSTEM_PROMPT = `You are CineFlex, the master orchestrator of an agentic AI filmmaking system. You coordinate five specialist AI agents (Director, Script Doctor, Cinematographer, Sound Designer, Producer) like a real film development team.
+export const ORCHESTRATOR_SYSTEM_PROMPT = `You are CineFlex, the master orchestrator of an agentic AI filmmaking system. You coordinate nine specialist AI agents (Director, Script Doctor, Cinematographer, Sound Designer, Producer, Editor, Storyboard Artist, Continuity, Marketing) like a real film development team.
 
 Your job when given a scene:
 1. Produce a single sharp logline (one sentence, present tense)
@@ -18,6 +22,10 @@ Your job when given a scene:
 3. Identify the 3-5 most important creative gaps
 4. Compile the final merged suggestion list from all agents (deduped, ranked by impact)
 5. Extract style memory updates (tone, camera language, palette, pace, motifs)
+6. Generate detailed storyboard frame prompts for AI image generation
+7. Create a professional shot list
+8. Design the audio/music direction
+9. Write a motion teaser prompt for video AI
 
 Theme awareness: The hackathon theme is "INTO THE UNKNOWN". When relevant, find opportunities to weave in themes of uncertainty, discovery, hidden knowledge, or the moment before revelation.
 
@@ -25,15 +33,16 @@ Output ONLY valid JSON matching this schema exactly:
 {
   "logline": "string",
   "refinedScene": "string (2-4 sentences, rich cinematic language)",
-  "topGaps": [{ "type": "tension|motivation|visual|pacing|audio|continuity", "severity": "critical|moderate|minor", "description": "string" }],
+  "topGaps": [{ "type": "tension|motivation|visual|pacing|audio|continuity|structure|brand", "severity": "critical|moderate|minor", "description": "string" }],
   "suggestions": [{
     "id": "uuid",
-    "agentId": "director|script_doctor|cinematography|sound_design|producer",
+    "agentId": "director|script_doctor|cinematography|sound_design|producer|editor|storyboard|continuity|marketing",
     "category": "string",
     "problem": "string (what is missing or weak)",
     "solution": "string (specific actionable fix)",
     "cinematicNote": "string (reference to real film technique or film example)",
-    "status": "pending"
+    "status": "pending",
+    "priority": "high|medium|low"
   }],
   "styleMemoryUpdate": {
     "tone": "string",
@@ -49,7 +58,7 @@ Output ONLY valid JSON matching this schema exactly:
     "shotType": "string",
     "cameraMove": "string",
     "description": "string",
-    "prompt": "string (detailed image generation prompt, cinematic, for Flux/SDXL)"
+    "prompt": "string (detailed image generation prompt, cinematic, for Flux/SDXL - describe lighting, composition, mood, style)"
   }],
   "shotList": [{
     "shotNumber": "string",
@@ -71,9 +80,12 @@ Output ONLY valid JSON matching this schema exactly:
     "sfxElements": ["string"],
     "silenceUsage": "string",
     "voiceTone": "string",
-    "promptForGeneration": "string (detailed ElevenLabs/music gen prompt)"
+    "promptForGeneration": "string (detailed music generation prompt)"
   },
-  "motionTeaserPrompt": "string (detailed prompt for image-to-video generation)"
+  "motionTeaserPrompt": "string (detailed prompt for image-to-video generation, describe movement, camera motion, duration)",
+  "editingNotes": "string (specific editing direction for this scene)",
+  "continuityNotes": "string (what to track for continuity)",
+  "marketingHooks": ["string (3-5 marketing angles or hooks for this scene)"]
 }
 
 Return ONLY the JSON object. No markdown. No explanation.`
@@ -90,16 +102,20 @@ export async function runOrchestrator(
 
   const groq = createGroq({ apiKey })
 
-  // Run all agents in parallel for speed
-  const [directorOut, scriptOut, cinemaOut, soundOut, producerOut] = await Promise.allSettled([
+  // Run all agents in parallel for speed - core 5 first, then extended
+  const [directorOut, scriptOut, cinemaOut, soundOut, producerOut, editorOut, continuityOut, marketingOut, storyboardOut] = await Promise.allSettled([
     directorAgent(sceneInput, styleMemory),
     scriptDoctorAgent(sceneInput, styleMemory),
     cinematographyAgent(sceneInput, styleMemory),
     soundDesignAgent(sceneInput, styleMemory),
     producerAgent(sceneInput, styleMemory),
+    editorAgent(sceneInput, styleMemory),
+    continuityAgent(sceneInput, styleMemory),
+    marketingAgent(sceneInput, styleMemory),
+    storyboardArtistAgent(sceneInput, styleMemory),
   ])
 
-  const agentOutputs = [directorOut, scriptOut, cinemaOut, soundOut, producerOut]
+  const agentOutputs = [directorOut, scriptOut, cinemaOut, soundOut, producerOut, editorOut, continuityOut, marketingOut, storyboardOut]
     .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
     .map(r => r.value)
     .join('\n\n---AGENT SEPARATOR---\n\n')
@@ -115,10 +131,10 @@ STYLE MEMORY: ${JSON.stringify(styleMemory, null, 2)}
 ORIGINAL SCENE INPUT:
 ${sceneInput}
 
-AGENT OUTPUTS FROM SPECIALIST TEAM:
+AGENT OUTPUTS FROM SPECIALIST TEAM (9 AGENTS):
 ${agentOutputs}
 
-Now synthesize all of this into the final analysis JSON.`
+Now synthesize all of this into the final analysis JSON. Include 5-8 storyboard frames and 8-12 shots in the shot list.`
   })
 
   // Clean JSON (strip any accidental markdown fences)
@@ -129,6 +145,7 @@ Now synthesize all of this into the final analysis JSON.`
     parsed = JSON.parse(cleaned)
   } catch {
     // Fallback if JSON parsing fails
+    console.error('[Orchestrator] JSON parsing failed, using fallback')
     return {
       logline: 'Analysis completed with parsing errors',
       refinedScene: sceneInput,
@@ -158,21 +175,23 @@ Now synthesize all of this into the final analysis JSON.`
   const suggestions: Suggestion[] = ((parsed.suggestions as Suggestion[]) || []).map((s, i) => ({
     ...s,
     id: s.id || `suggestion_${Date.now()}_${i}`,
-    status: 'pending' as const
+    status: 'pending' as const,
+    priority: s.priority || 'medium'
   }))
 
   // Add IDs to gaps
   const topGaps: Gap[] = ((parsed.topGaps as Gap[]) || []).map((g, i) => ({
     ...g,
     id: `gap_${Date.now()}_${i}`,
-    agentId: 'director' as const
+    agentId: g.agentId || 'director'
   }))
 
   // Add IDs and status to storyboard frames
   const storyboardFramePrompts: StoryboardFrame[] = ((parsed.storyboardFramePrompts as StoryboardFrame[]) || []).map((f, i) => ({
     ...f,
     id: `frame_${Date.now()}_${i}`,
-    cameraMovement: f.cameraMove || '',
+    frameNumber: f.frameNumber || i + 1,
+    cameraMovement: f.cameraMove || f.cameraMovement || '',
     status: 'pending' as const
   }))
 
@@ -207,6 +226,9 @@ Now synthesize all of this into the final analysis JSON.`
     storyboardFramePrompts,
     shotList,
     audioMood,
-    motionTeaserPrompt: (parsed.motionTeaserPrompt as string) || ''
+    motionTeaserPrompt: (parsed.motionTeaserPrompt as string) || '',
+    editingNotes: (parsed.editingNotes as string) || '',
+    continuityNotes: (parsed.continuityNotes as string) || '',
+    marketingHooks: (parsed.marketingHooks as string[]) || []
   }
 }

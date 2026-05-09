@@ -17,19 +17,19 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'CineFlex - Agentic AI Filmmaking',
-  description: 'Direct with AI. Not just prompt with AI. Five specialist AI agents working as your collaborative cinematic crew.',
+  description: 'Direct with AI. Not just prompt with AI. Nine specialist AI agents working as your collaborative cinematic crew.',
   generator: 'v0.app',
-  keywords: ['AI', 'filmmaking', 'director', 'cinema', 'storyboard', 'screenwriting', 'CineFlex'],
-  authors: [{ name: 'CineFlex' }],
+  keywords: ['AI', 'filmmaking', 'director', 'cinema', 'storyboard', 'screenwriting', 'CineFlex', 'production', 'video'],
+  authors: [{ name: 'CineFlex Team' }],
   openGraph: {
     title: 'CineFlex - Agentic AI Filmmaking',
-    description: 'Direct with AI. Not just prompt with AI.',
+    description: 'Direct with AI. Nine specialist AI agents working as your collaborative cinematic crew.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'CineFlex - Agentic AI Filmmaking',
-    description: 'Direct with AI. Not just prompt with AI.',
+    description: 'Direct with AI. Nine specialist AI agents working as your collaborative cinematic crew.',
   },
   icons: {
     icon: [
@@ -62,7 +62,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark" data-scroll-behavior="smooth">
+    <html lang="en" className="dark bg-[#0a0a0f]" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body className={`${geist.variable} ${geistMono.variable} font-sans antialiased min-h-screen bg-[#0a0a0f]`}>
         <Providers>
           {children}

@@ -2,26 +2,40 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, X, Pencil, Save } from 'lucide-react'
+import { Check, X, Pencil, Save, ArrowUp, ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import type { Suggestion } from '@/lib/types'
+import type { Suggestion, AgentId } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-const AGENT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+const AGENT_COLORS: Record<AgentId, { bg: string; text: string; border: string }> = {
   director: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30' },
   script_doctor: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30' },
   cinematography: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30' },
   sound_design: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },
   producer: { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/30' },
+  editor: { bg: 'bg-pink-500/10', text: 'text-pink-400', border: 'border-pink-500/30' },
+  storyboard: { bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+  continuity: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30' },
+  marketing: { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/30' },
 }
 
-const AGENT_NAMES: Record<string, string> = {
+const AGENT_NAMES: Record<AgentId, string> = {
   director: 'Director',
   script_doctor: 'Script Doctor',
   cinematography: 'Cinematography',
   sound_design: 'Sound Design',
   producer: 'Producer',
+  editor: 'Editor',
+  storyboard: 'Storyboard',
+  continuity: 'Continuity',
+  marketing: 'Marketing',
+}
+
+const PRIORITY_COLORS = {
+  high: { bg: 'bg-red-500/10', text: 'text-red-400', icon: ArrowUp },
+  medium: { bg: 'bg-amber-500/10', text: 'text-amber-400', icon: null },
+  low: { bg: 'bg-blue-500/10', text: 'text-blue-400', icon: ArrowDown },
 }
 
 interface SuggestionCardProps {
@@ -37,6 +51,9 @@ export function SuggestionCard({ suggestion, onAccept, onReject, onEdit }: Sugge
   
   const colors = AGENT_COLORS[suggestion.agentId] || AGENT_COLORS.director
   const agentName = AGENT_NAMES[suggestion.agentId] || 'Agent'
+  const priority = suggestion.priority || 'medium'
+  const priorityConfig = PRIORITY_COLORS[priority]
+  const PriorityIcon = priorityConfig.icon
 
   const handleSaveEdit = () => {
     onEdit(editedSolution)
@@ -60,7 +77,7 @@ export function SuggestionCard({ suggestion, onAccept, onReject, onEdit }: Sugge
     >
       {/* Header with agent badge */}
       <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className={cn(
             'px-2 py-0.5 text-[10px] font-mono uppercase rounded border',
             colors.bg, colors.text, colors.border
@@ -69,6 +86,15 @@ export function SuggestionCard({ suggestion, onAccept, onReject, onEdit }: Sugge
           </span>
           {suggestion.category && (
             <span className="text-[10px] text-[#52526b]">{suggestion.category}</span>
+          )}
+          {priority !== 'medium' && (
+            <span className={cn(
+              'flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono uppercase rounded',
+              priorityConfig.bg, priorityConfig.text
+            )}>
+              {PriorityIcon && <PriorityIcon className="w-2.5 h-2.5" />}
+              {priority}
+            </span>
           )}
         </div>
         

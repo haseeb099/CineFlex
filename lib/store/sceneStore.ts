@@ -1,12 +1,12 @@
 'use client'
 
 import { create } from 'zustand'
-import type { AgentStatus, Suggestion, StoryboardFrame, AnalysisResult } from '../types'
+import type { AgentStatus, Suggestion, StoryboardFrame, AnalysisResult, AgentId } from '../types'
 
 interface SceneState {
   // Current analysis state
   isAnalyzing: boolean
-  agentStatuses: Record<string, AgentStatus>
+  agentStatuses: Record<AgentId, AgentStatus>
   analysisResult: AnalysisResult | null
   analysisError: string | null
   
@@ -17,7 +17,7 @@ interface SceneState {
   
   // Actions
   startAnalysis: () => void
-  updateAgentStatus: (agentId: string, status: AgentStatus) => void
+  updateAgentStatus: (agentId: AgentId, status: AgentStatus) => void
   setAnalysisResult: (result: AnalysisResult) => void
   setAnalysisError: (error: string) => void
   resetAnalysis: () => void
@@ -32,12 +32,52 @@ interface SceneState {
   updateStoryboardFrame: (frameNumber: number, updates: Partial<StoryboardFrame>) => void
 }
 
-const initialAgentStatuses: Record<string, AgentStatus> = {
+const initialAgentStatuses: Record<AgentId, AgentStatus> = {
   director: 'idle',
   script_doctor: 'idle',
   cinematography: 'idle',
   sound_design: 'idle',
-  producer: 'idle'
+  producer: 'idle',
+  editor: 'idle',
+  storyboard: 'idle',
+  continuity: 'idle',
+  marketing: 'idle'
+}
+
+const runningAgentStatuses: Record<AgentId, AgentStatus> = {
+  director: 'running',
+  script_doctor: 'running',
+  cinematography: 'running',
+  sound_design: 'running',
+  producer: 'running',
+  editor: 'running',
+  storyboard: 'running',
+  continuity: 'running',
+  marketing: 'running'
+}
+
+const completeAgentStatuses: Record<AgentId, AgentStatus> = {
+  director: 'complete',
+  script_doctor: 'complete',
+  cinematography: 'complete',
+  sound_design: 'complete',
+  producer: 'complete',
+  editor: 'complete',
+  storyboard: 'complete',
+  continuity: 'complete',
+  marketing: 'complete'
+}
+
+const errorAgentStatuses: Record<AgentId, AgentStatus> = {
+  director: 'error',
+  script_doctor: 'error',
+  cinematography: 'error',
+  sound_design: 'error',
+  producer: 'error',
+  editor: 'error',
+  storyboard: 'error',
+  continuity: 'error',
+  marketing: 'error'
 }
 
 export const useSceneStore = create<SceneState>((set) => ({
@@ -52,13 +92,7 @@ export const useSceneStore = create<SceneState>((set) => ({
   startAnalysis: () => {
     set({
       isAnalyzing: true,
-      agentStatuses: {
-        director: 'running',
-        script_doctor: 'running',
-        cinematography: 'running',
-        sound_design: 'running',
-        producer: 'running'
-      },
+      agentStatuses: { ...runningAgentStatuses },
       analysisResult: null,
       analysisError: null
     })
@@ -74,13 +108,7 @@ export const useSceneStore = create<SceneState>((set) => ({
     set({
       isAnalyzing: false,
       analysisResult: result,
-      agentStatuses: {
-        director: 'complete',
-        script_doctor: 'complete',
-        cinematography: 'complete',
-        sound_design: 'complete',
-        producer: 'complete'
-      }
+      agentStatuses: { ...completeAgentStatuses }
     })
   },
 
@@ -88,13 +116,7 @@ export const useSceneStore = create<SceneState>((set) => ({
     set({
       isAnalyzing: false,
       analysisError: error,
-      agentStatuses: {
-        director: 'error',
-        script_doctor: 'error',
-        cinematography: 'error',
-        sound_design: 'error',
-        producer: 'error'
-      }
+      agentStatuses: { ...errorAgentStatuses }
     })
   },
 

@@ -23,9 +23,10 @@ export async function POST(req: NextRequest) {
   try {
     // Rate limiting
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
-    if (!checkRateLimit(ip)) {
+    const rateLimitResult = checkRateLimit(ip, 'analyze')
+    if (!rateLimitResult.allowed) {
       return NextResponse.json(
-        { error: 'Rate limit exceeded. Wait 60 seconds.' },
+        { error: `Rate limit exceeded. Wait ${Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)} seconds.` },
         { status: 429 }
       )
     }
