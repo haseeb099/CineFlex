@@ -14,7 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
+  DialogDescription,
+  } from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -76,9 +77,12 @@ export default function HomePage() {
               </Button>
             </DialogTrigger>
             <DialogContent className="bg-[#111118] border-white/10 sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle className="text-white">Create New Project</DialogTitle>
-              </DialogHeader>
+  <DialogHeader>
+  <DialogTitle className="text-white">Create New Project</DialogTitle>
+  <DialogDescription className="text-[#52526b]">
+    Start a new cinematic project with AI-powered scene analysis.
+  </DialogDescription>
+  </DialogHeader>
               <div className="space-y-4 pt-4">
                 <div className="space-y-2">
                   <Label htmlFor="title" className="text-[#a1a1bc]">Project Title</Label>

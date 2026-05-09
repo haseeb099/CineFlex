@@ -2,7 +2,7 @@
 
 > **Direct with AI. Not just prompt with AI.**
 
-CineFlex is a production-ready agentic AI filmmaking operating system that uses five specialist AI agents working as your collaborative cinematic crew. Built for the **Big Screen Hack 2026** hackathon with the theme **"INTO THE UNKNOWN"**.
+CineFlex is a production-ready agentic AI filmmaking operating system that uses **nine specialist AI agents** working as your collaborative cinematic crew. Built for the **Big Screen Hack 2026** hackathon with the theme **"INTO THE UNKNOWN"**.
 
 ![CineFlex](https://img.shields.io/badge/CineFlex-Agentic%20AI%20Filmmaking-c084fc?style=for-the-badge)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)
@@ -17,7 +17,7 @@ CineFlex is a production-ready agentic AI filmmaking operating system that uses 
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Architecture](#architecture)
-- [The Five AI Agents](#the-five-ai-agents)
+- [The Nine AI Agents](#the-nine-ai-agents)
 - [API Routes](#api-routes)
 - [Project Structure](#project-structure)
 - [Environment Variables](#environment-variables)
@@ -33,7 +33,7 @@ CineFlex is a production-ready agentic AI filmmaking operating system that uses 
 
 ## Overview
 
-CineFlex transforms raw scene ideas into complete cinematic packages through an agentic AI workflow. Unlike traditional AI tools that simply generate content, CineFlex employs a **multi-agent architecture** where five specialist AI agents collaborate like a real film development team:
+CineFlex transforms raw scene ideas into complete cinematic packages through an agentic AI workflow. Unlike traditional AI tools that simply generate content, CineFlex employs a **multi-agent architecture** where nine specialist AI agents collaborate like a real film development team:
 
 1. Analyze your scene description
 2. Detect creative gaps and opportunities
@@ -49,7 +49,7 @@ CineFlex transforms raw scene ideas into complete cinematic packages through an 
 
 | Feature | Description |
 |---------|-------------|
-| **Multi-Agent Analysis** | Five AI agents analyze scenes from different professional perspectives |
+| **Multi-Agent Analysis** | Nine AI agents analyze scenes from different professional perspectives |
 | **Gap Detection** | Identifies missing elements in your scene (motivation, conflict, visual details) |
 | **Prompt Enhancement** | AI-powered prompt improvement to transform raw ideas into cinematic descriptions |
 | **Scene Splitting** | Automatically breaks long narratives into manageable scenes |
@@ -159,7 +159,7 @@ CineFlex transforms raw scene ideas into complete cinematic packages through an 
 
 ---
 
-## The Five AI Agents
+## The Nine AI Agents
 
 ### 1. Director Agent
 **Focus:** Cinematic vision, emotional architecture, directorial intent
@@ -201,6 +201,38 @@ CineFlex transforms raw scene ideas into complete cinematic packages through an 
 - Estimates locations, cast size, and day count
 - Suggests simplifications without compromising vision
 
+### 6. Editor Agent
+**Focus:** Pacing, rhythm, transitions, montage
+
+- Analyzes scene rhythm and timing
+- Suggests cut points and transition styles
+- Recommends montage sequences
+- References editing masters (Thelma Schoonmaker, Walter Murch)
+
+### 7. Storyboard Artist Agent
+**Focus:** Visual composition, frame design, shot flow
+
+- Creates detailed frame compositions
+- Plans visual continuity between shots
+- Suggests camera angles and movements
+- Designs key visual moments
+
+### 8. Continuity Supervisor Agent
+**Focus:** Consistency, timeline, props, wardrobe
+
+- Tracks timeline and logical flow
+- Identifies continuity errors
+- Monitors prop and wardrobe consistency
+- Ensures scene-to-scene coherence
+
+### 9. Marketing Agent
+**Focus:** Audience appeal, taglines, promotional hooks
+
+- Identifies marketable moments
+- Suggests promotional taglines
+- Analyzes audience appeal
+- Creates pitch-ready descriptions
+
 ---
 
 ## API Routes
@@ -209,7 +241,7 @@ CineFlex transforms raw scene ideas into complete cinematic packages through an 
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/analyze` | POST | Main analysis endpoint - runs all 5 agents and orchestrator |
+| `/api/analyze` | POST | Main analysis endpoint - runs all 9 agents and orchestrator |
 | `/api/enhance-prompt` | POST | Enhances raw prompts into cinematic descriptions |
 
 ### Generation

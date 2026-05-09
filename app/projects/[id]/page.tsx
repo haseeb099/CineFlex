@@ -405,14 +405,14 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
 
   return (
     <ErrorBoundary>
-      <div className="h-screen flex flex-col bg-[#0a0a0f] overflow-hidden">
+      <div className="h-screen flex flex-col bg-[#0a0a0f]" suppressHydrationWarning>
         <Navbar
           projectTitle={project.title}
           showExport={!!analysisResult}
           onExport={handleExportScene}
         />
         
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex min-h-0">
           {/* Left Sidebar - Fixed */}
           <aside className="w-[260px] border-r border-white/5 bg-[#0a0a0f] flex flex-col shrink-0">
             <Sidebar
