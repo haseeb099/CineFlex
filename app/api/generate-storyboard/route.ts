@@ -30,33 +30,73 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // If no Runware key, return placeholder data for demo
+    // If no Runware key, return high-quality placeholder images
     if (!process.env.RUNWARE_API_KEY) {
-      const placeholders = framePrompts.map((fp: FramePrompt, index: number) => ({
-        frameNumber: fp.frameNumber || index + 1,
-        imageUrl: `https://picsum.photos/seed/cineflex-${fp.frameNumber || index}-${Date.now()}/1280/720`,
-        prompt: fp.prompt,
-        shotType: fp.shotType || 'WS',
-        cameraMove: fp.cameraMove || 'STATIC',
-        description: fp.description || '',
-        status: 'done',
-        mode: 'placeholder'
-      }))
+      // Use Unsplash for higher quality placeholder images with cinematic themes
+      const cinematicCategories = [
+        'film,cinema,movie',
+        'dramatic,lighting,mood',
+        'nature,landscape,dramatic',
+        'urban,city,night',
+        'portrait,dramatic,shadow',
+      ]
+
+      const placeholders = framePrompts.map((fp: FramePrompt, index: number) => {
+        const category = cinematicCategories[index % cinematicCategories.length]
+        return {
+          frameNumber: fp.frameNumber || index + 1,
+          imageUrl: `https://source.unsplash.com/1280x720/?${encodeURIComponent(category)}&sig=${fp.frameNumber || index}-${Date.now()}`,
+          prompt: fp.prompt,
+          shotType: fp.shotType || 'WS',
+          cameraMove: fp.cameraMove || 'STATIC',
+          description: fp.description || '',
+          status: 'done',
+          mode: 'placeholder'
+        }
+      })
+
       return NextResponse.json({ 
         frames: placeholders, 
         mode: 'placeholder',
-        message: 'Runware API key not configured. Using placeholder images.'
+        message: 'Using placeholder images. Add RUNWARE_API_KEY for AI-generated storyboards.'
       })
     }
 
-    // Runware API - proper format for image generation
+    // Runware API - generate images with FLUX model
     const generatedFrames = []
 
     for (const fp of framePrompts) {
-      const cinematicPrompt = `Cinematic film still, professional cinematography, 35mm film grain, anamorphic lens, ${fp.shotType || 'wide shot'}, ${fp.cameraMove || 'static camera'}: ${fp.prompt}. Dramatic lighting, high production value, movie scene, 2.39:1 aspect ratio feel, bokeh, depth of field.`
+      const shotTypeDescriptions: Record<string, string> = {
+        'ECU': 'extreme close-up shot focusing on tiny details',
+        'CU': 'close-up shot on face or object',
+        'MCU': 'medium close-up from chest up',
+        'MS': 'medium shot from waist up',
+        'MWS': 'medium wide shot showing subject and environment',
+        'WS': 'wide shot establishing the full scene',
+        'EWS': 'extreme wide shot vast landscape or space',
+        'POV': 'point of view shot from character perspective',
+        'OTS': 'over the shoulder shot',
+        'INSERT': 'insert shot of specific detail or object',
+      }
+
+      const cameraDescriptions: Record<string, string> = {
+        'STATIC': 'static camera on tripod',
+        'PAN': 'smooth horizontal pan',
+        'TILT': 'vertical tilt movement',
+        'DOLLY': 'dolly tracking forward or backward',
+        'TRACK': 'lateral tracking shot',
+        'CRANE': 'crane shot moving vertically',
+        'HANDHELD': 'handheld documentary style',
+        'STEADICAM': 'smooth steadicam following',
+        'DRONE': 'aerial drone perspective',
+      }
+
+      const shotDesc = shotTypeDescriptions[fp.shotType || 'WS'] || 'wide establishing shot'
+      const cameraDesc = cameraDescriptions[fp.cameraMove || 'STATIC'] || 'static composition'
+
+      const cinematicPrompt = `Cinematic film still, professional cinematography, 35mm film grain, anamorphic lens bokeh, ${shotDesc}, ${cameraDesc}: ${fp.prompt}. Dramatic lighting, high production value, movie scene, 2.39:1 aspect ratio composition, shallow depth of field, color graded, photorealistic.`
 
       try {
-        // Runware uses WebSocket or REST - using REST approach
         const response = await fetch('https://api.runware.ai/v1', {
           method: 'POST',
           headers: {
@@ -67,14 +107,15 @@ export async function POST(req: NextRequest) {
             taskType: 'imageInference',
             taskUUID: `frame-${fp.frameNumber}-${Date.now()}`,
             positivePrompt: cinematicPrompt,
-            negativePrompt: 'text, watermark, logo, signature, blurry, low quality, amateur, cartoon, anime, illustration, drawing',
-            model: 'runware:100@1', // FLUX model
+            negativePrompt: 'text, watermark, logo, signature, blurry, low quality, amateur, cartoon, anime, illustration, drawing, painting, cgi, 3d render, oversaturated, overexposed, underexposed',
+            model: 'runware:100@1', // FLUX model for high quality
             width: 1280,
             height: 720,
             numberResults: 1,
             outputType: 'URL',
-            steps: 25,
+            steps: 30,
             CFGScale: 7.5,
+            scheduler: 'FlowMatchEulerDiscreteScheduler',
           }]),
         })
 
@@ -82,16 +123,16 @@ export async function POST(req: NextRequest) {
           const errorText = await response.text()
           console.error(`[storyboard] Runware error for frame ${fp.frameNumber}:`, response.status, errorText)
           
-          // Use placeholder for this frame
+          // Use Unsplash fallback for this frame
           generatedFrames.push({
             frameNumber: fp.frameNumber,
-            imageUrl: `https://picsum.photos/seed/fallback-${fp.frameNumber}-${Date.now()}/1280/720`,
+            imageUrl: `https://source.unsplash.com/1280x720/?cinema,dramatic&sig=${fp.frameNumber}-${Date.now()}`,
             prompt: fp.prompt,
             shotType: fp.shotType || 'WS',
             cameraMove: fp.cameraMove || 'STATIC',
             description: fp.description || '',
             status: 'done',
-            mode: 'placeholder'
+            mode: 'fallback'
           })
           continue
         }
@@ -105,32 +146,34 @@ export async function POST(req: NextRequest) {
 
         generatedFrames.push({
           frameNumber: fp.frameNumber,
-          imageUrl: imageUrl || `https://picsum.photos/seed/frame-${fp.frameNumber}-${Date.now()}/1280/720`,
+          imageUrl: imageUrl || `https://source.unsplash.com/1280x720/?film&sig=${fp.frameNumber}-${Date.now()}`,
           prompt: fp.prompt,
           shotType: fp.shotType || 'WS',
           cameraMove: fp.cameraMove || 'STATIC',
           description: fp.description || '',
           status: 'done',
-          mode: imageUrl ? 'generated' : 'placeholder'
+          mode: imageUrl ? 'generated' : 'fallback'
         })
       } catch (frameError) {
         console.error(`[storyboard] Error generating frame ${fp.frameNumber}:`, frameError)
         generatedFrames.push({
           frameNumber: fp.frameNumber,
-          imageUrl: `https://picsum.photos/seed/error-${fp.frameNumber}-${Date.now()}/1280/720`,
+          imageUrl: `https://source.unsplash.com/1280x720/?movie&sig=${fp.frameNumber}-${Date.now()}`,
           prompt: fp.prompt,
           shotType: fp.shotType || 'WS',
           cameraMove: fp.cameraMove || 'STATIC',
           description: fp.description || '',
           status: 'done',
-          mode: 'placeholder'
+          mode: 'fallback'
         })
       }
     }
 
+    const generatedCount = generatedFrames.filter(f => f.mode === 'generated').length
     return NextResponse.json({ 
       frames: generatedFrames, 
-      mode: generatedFrames.some(f => f.mode === 'generated') ? 'generated' : 'placeholder'
+      mode: generatedCount > 0 ? 'generated' : 'fallback',
+      message: `Generated ${generatedCount}/${generatedFrames.length} frames with AI`
     })
   } catch (err) {
     console.error('[storyboard] error:', err instanceof Error ? err.message : 'unknown')

@@ -2,7 +2,21 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { Film, Download, Home, ChevronRight, Package, FileText, FileJson, Loader2 } from 'lucide-react'
+import { 
+  Film, 
+  Download, 
+  Home, 
+  ChevronRight, 
+  Package, 
+  FileText, 
+  FileJson, 
+  Loader2,
+  Image as ImageIcon,
+  Music,
+  Video,
+  FolderArchive,
+  Check
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -13,16 +27,57 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
+import JSZip from 'jszip'
+
+interface Scene {
+  id: string
+  rawInput: string
+  refinedScene?: string
+  logline?: string
+  storyboardFrames?: Array<{
+    frameNumber: number
+    prompt: string
+    imageUrl?: string
+    shotType?: string
+    cameraMove?: string
+  }>
+  shotList?: Array<{
+    shotNumber: string
+    description: string
+    shotType?: string
+    cameraMovement?: string
+    lens?: string
+  }>
+  audioMood?: {
+    genre?: string
+    mood?: string
+    instruments?: string[]
+    promptForGeneration?: string
+    audioUrl?: string
+  }
+  motionTeaserPrompt?: string
+}
+
+interface Project {
+  id: string
+  title: string
+  genre: string
+  visualStyle: string
+  scenes: Scene[]
+  createdAt: number
+  updatedAt: number
+}
 
 interface NavbarProps {
   projectTitle?: string
-  projectData?: unknown
+  projectData?: Project
   onExport?: () => void
   showExport?: boolean
 }
 
 export function Navbar({ projectTitle, projectData, onExport, showExport = false }: NavbarProps) {
   const [isExporting, setIsExporting] = useState(false)
+  const [exportType, setExportType] = useState<string | null>(null)
 
   const handleExportMarkdown = async () => {
     if (!projectData) {
@@ -31,6 +86,7 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
     }
 
     setIsExporting(true)
+    setExportType('markdown')
     try {
       const response = await fetch('/api/export-bundle', {
         method: 'POST',
@@ -42,12 +98,11 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
 
       const data = await response.json()
       
-      // Download markdown
       const blob = new Blob([data.markdown], { type: 'text/markdown' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${projectTitle || 'cineflex-project'}.md`
+      a.download = `${projectTitle?.replace(/[^a-z0-9]/gi, '_') || 'cineflex-project'}.md`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -59,6 +114,7 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
       console.error(err)
     } finally {
       setIsExporting(false)
+      setExportType(null)
     }
   }
 
@@ -69,6 +125,7 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
     }
 
     setIsExporting(true)
+    setExportType('json')
     try {
       const response = await fetch('/api/export-bundle', {
         method: 'POST',
@@ -80,12 +137,11 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
 
       const data = await response.json()
       
-      // Download JSON
       const blob = new Blob([data.json], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${projectTitle || 'cineflex-project'}.json`
+      a.download = `${projectTitle?.replace(/[^a-z0-9]/gi, '_') || 'cineflex-project'}.json`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -97,6 +153,7 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
       console.error(err)
     } finally {
       setIsExporting(false)
+      setExportType(null)
     }
   }
 
@@ -107,6 +164,7 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
     }
 
     setIsExporting(true)
+    setExportType('csv')
     try {
       const response = await fetch('/api/export-bundle', {
         method: 'POST',
@@ -118,12 +176,11 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
 
       const data = await response.json()
       
-      // Download CSV
       const blob = new Blob([data.shotListCsv], { type: 'text/csv' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${projectTitle || 'cineflex'}-shot-list.csv`
+      a.download = `${projectTitle?.replace(/[^a-z0-9]/gi, '_') || 'cineflex'}-shot-list.csv`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -135,14 +192,111 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
       console.error(err)
     } finally {
       setIsExporting(false)
+      setExportType(null)
     }
   }
 
   const handleFullExport = async () => {
-    if (onExport) {
-      onExport()
-    } else {
-      await handleExportMarkdown()
+    if (!projectData) {
+      toast.error('No project data to export')
+      return
+    }
+
+    setIsExporting(true)
+    setExportType('zip')
+    
+    try {
+      const zip = new JSZip()
+      const projectName = projectTitle?.replace(/[^a-z0-9]/gi, '_') || 'cineflex-project'
+
+      // Get markdown and other exports
+      const response = await fetch('/api/export-bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: projectData }),
+      })
+
+      if (!response.ok) throw new Error('Export failed')
+      const exportData = await response.json()
+
+      // Add markdown file
+      zip.file(`${projectName}.md`, exportData.markdown)
+      
+      // Add JSON file
+      zip.file(`${projectName}.json`, exportData.json)
+      
+      // Add shot list CSV
+      zip.file(`${projectName}-shot-list.csv`, exportData.shotListCsv)
+
+      // Create images folder and download storyboard images
+      const imagesFolder = zip.folder('storyboard-images')
+      
+      // Collect all image URLs from all scenes
+      const imagePromises: Promise<void>[] = []
+      let imageCount = 0
+
+      for (const scene of projectData.scenes) {
+        if (scene.storyboardFrames) {
+          for (const frame of scene.storyboardFrames) {
+            if (frame.imageUrl && !frame.imageUrl.startsWith('data:')) {
+              const frameNum = frame.frameNumber
+              imagePromises.push(
+                fetch(frame.imageUrl)
+                  .then(res => res.blob())
+                  .then(blob => {
+                    imagesFolder?.file(`frame-${String(frameNum).padStart(3, '0')}.jpg`, blob)
+                    imageCount++
+                  })
+                  .catch(err => {
+                    console.error(`Failed to download frame ${frameNum}:`, err)
+                  })
+              )
+            }
+          }
+        }
+      }
+
+      // Wait for all images to download
+      await Promise.allSettled(imagePromises)
+
+      // Create audio folder
+      const audioFolder = zip.folder('audio')
+      
+      // Download audio files if available
+      let audioCount = 0
+      for (const scene of projectData.scenes) {
+        if (scene.audioMood?.audioUrl && !scene.audioMood.audioUrl.startsWith('data:')) {
+          try {
+            const audioRes = await fetch(scene.audioMood.audioUrl)
+            const audioBlob = await audioRes.blob()
+            audioFolder?.file(`scene-${scene.id.slice(0, 8)}-audio.mp3`, audioBlob)
+            audioCount++
+          } catch (err) {
+            console.error('Failed to download audio:', err)
+          }
+        }
+      }
+
+      // Generate the ZIP file
+      const content = await zip.generateAsync({ type: 'blob' })
+      
+      // Download the ZIP
+      const url = URL.createObjectURL(content)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${projectName}-complete.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast.success(`Downloaded complete package (${imageCount} images, ${audioCount} audio files)`)
+    } catch (err) {
+      toast.error('Full export failed')
+      console.error(err)
+    } finally {
+      setIsExporting(false)
+      setExportType(null)
     }
   }
 
@@ -170,7 +324,7 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
           )}
         </div>
 
-        {/* Center: Frame counter decoration */}
+        {/* Center: Status indicator */}
         <div className="hidden md:flex items-center gap-2 font-mono text-[10px] text-[#52526b]">
           <span className="px-2 py-1 bg-white/3 rounded border border-white/5">
             FPS 24
@@ -208,36 +362,72 @@ export function Navbar({ projectTitle, projectData, onExport, showExport = false
                   <span className="hidden sm:inline">Download</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 bg-[#111118] border-white/10">
-                <DropdownMenuLabel className="text-[#a1a1bc]">Export Project</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="w-64 bg-[#111118] border-white/10">
+                <DropdownMenuLabel className="text-[#a1a1bc] flex items-center gap-2">
+                  <FolderArchive className="w-4 h-4" />
+                  Export Project
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-white/5" />
+                
+                {/* Full Package - Featured */}
                 <DropdownMenuItem 
                   onClick={handleFullExport}
-                  className="gap-2 text-white hover:bg-white/5 cursor-pointer"
+                  disabled={isExporting}
+                  className="gap-3 text-white hover:bg-[#c084fc]/10 cursor-pointer py-3 focus:bg-[#c084fc]/10"
                 >
-                  <Package className="w-4 h-4 text-[#c084fc]" />
-                  Full Package (ZIP)
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#c084fc] to-[#38bdf8] flex items-center justify-center">
+                    <Package className="w-4 h-4 text-black" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Complete Package</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-[#c084fc]/20 text-[#c084fc] rounded">ZIP</span>
+                    </div>
+                    <span className="text-xs text-[#52526b]">All files, images, audio</span>
+                  </div>
+                  {exportType === 'zip' && <Loader2 className="w-4 h-4 animate-spin" />}
                 </DropdownMenuItem>
+                
+                <DropdownMenuSeparator className="bg-white/5" />
+                
+                {/* Individual exports */}
                 <DropdownMenuItem 
                   onClick={handleExportMarkdown}
-                  className="gap-2 text-white hover:bg-white/5 cursor-pointer"
+                  disabled={isExporting}
+                  className="gap-3 text-white hover:bg-white/5 cursor-pointer"
                 >
                   <FileText className="w-4 h-4 text-[#38bdf8]" />
-                  Markdown Document
+                  <div className="flex-1">
+                    <span>Markdown Document</span>
+                    <span className="text-xs text-[#52526b] block">Complete project writeup</span>
+                  </div>
+                  {exportType === 'markdown' && <Loader2 className="w-4 h-4 animate-spin" />}
                 </DropdownMenuItem>
+                
                 <DropdownMenuItem 
                   onClick={handleExportJSON}
-                  className="gap-2 text-white hover:bg-white/5 cursor-pointer"
+                  disabled={isExporting}
+                  className="gap-3 text-white hover:bg-white/5 cursor-pointer"
                 >
                   <FileJson className="w-4 h-4 text-[#f59e0b]" />
-                  JSON Data
+                  <div className="flex-1">
+                    <span>JSON Data</span>
+                    <span className="text-xs text-[#52526b] block">Raw project data</span>
+                  </div>
+                  {exportType === 'json' && <Loader2 className="w-4 h-4 animate-spin" />}
                 </DropdownMenuItem>
+                
                 <DropdownMenuItem 
                   onClick={handleExportShotList}
-                  className="gap-2 text-white hover:bg-white/5 cursor-pointer"
+                  disabled={isExporting}
+                  className="gap-3 text-white hover:bg-white/5 cursor-pointer"
                 >
                   <FileText className="w-4 h-4 text-green-400" />
-                  Shot List (CSV)
+                  <div className="flex-1">
+                    <span>Shot List</span>
+                    <span className="text-xs text-[#52526b] block">CSV for production</span>
+                  </div>
+                  {exportType === 'csv' && <Loader2 className="w-4 h-4 animate-spin" />}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

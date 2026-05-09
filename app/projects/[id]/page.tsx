@@ -33,6 +33,7 @@ import { AnalysisPanel } from '@/components/workspace/AnalysisPanel'
 import { StoryboardGrid } from '@/components/workspace/StoryboardGrid'
 import { ShotList, ShotListCompact } from '@/components/workspace/ShotList'
 import { AudioPlayer } from '@/components/workspace/AudioPlayer'
+import { MotionTeaser } from '@/components/workspace/MotionTeaser'
 import { ScenesEmptyState } from '@/components/shared/EmptyState'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { useProjectStore } from '@/lib/store/projectStore'
@@ -134,13 +135,17 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
           },
           motionTeaserPrompt: scene.motionTeaserPrompt || ''
         })
-        setActiveTab('review')
+        // Only switch to review if we're on input tab, otherwise keep current tab
+        if (activeTab === 'input') {
+          setActiveTab('review')
+        }
       } else {
         resetAnalysis()
         setActiveTab('input')
       }
     }
-  }, [currentSceneId, project, mounted, resetAnalysis, setAnalysisResult])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSceneId, mounted])
 
   // Show loading state while hydrating
   if (!mounted) {
@@ -645,31 +650,26 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                             />
                           </section>
 
-                          {/* Motion Teaser Section */}
+                          {/* Motion Teaser Section - Video Generation */}
                           <section className="space-y-4">
                             <div className="flex items-center gap-2">
                               <Video className="w-5 h-5 text-[#4ade80]" />
-                              <h3 className="text-lg font-semibold text-white">Motion Teaser Prompt</h3>
+                              <h3 className="text-lg font-semibold text-white">Video Generation</h3>
+                              <span className="text-xs text-[#52526b]">
+                                Create motion from storyboard
+                              </span>
                             </div>
-                            <div className="p-4 rounded-xl border border-white/10 bg-[#111118] space-y-4">
-                              <p className="text-sm text-[#a1a1bc] leading-relaxed">
-                                {analysisResult.motionTeaserPrompt || 'No motion prompt generated'}
-                              </p>
-                              <div className="flex flex-wrap gap-2">
-                                <Button
-                                  onClick={() => {
-                                    copyToClipboard(analysisResult.motionTeaserPrompt)
-                                    toast.success('Prompt copied!')
-                                  }}
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-2 border-white/10"
-                                >
-                                  <Copy className="w-4 h-4" />
-                                  Copy for Video AI
-                                </Button>
-                              </div>
-                            </div>
+                            <MotionTeaser
+                              frames={analysisResult.storyboardFramePrompts}
+                              sceneDescription={analysisResult.refinedScene}
+                              onMotionGenerated={(prompt) => {
+                                if (currentSceneId) {
+                                  updateScene(project.id, currentSceneId, {
+                                    motionTeaserPrompt: prompt
+                                  })
+                                }
+                              }}
+                            />
                           </section>
 
                           {/* Continue to Package */}
