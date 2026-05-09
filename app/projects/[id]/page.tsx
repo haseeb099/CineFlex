@@ -69,11 +69,17 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     setGeneratingAudio
   } = useSceneStore()
 
+  const [mounted, setMounted] = useState(false)
   const project = getProject(id)
   const [currentSceneId, setCurrentSceneId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('input')
   const [sceneInput, setSceneInput] = useState('')
   const [projectContext, setProjectContext] = useState('')
+
+  // Handle hydration mismatch
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Initialize with first scene or create one
   useEffect(() => {
@@ -121,6 +127,18 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
       }
     }
   }, [currentSceneId, project, resetAnalysis, setAnalysisResult])
+
+  // Show loading state while hydrating
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <Loader2 className="w-6 h-6 animate-spin text-[#c084fc]" />
+          <span className="text-[#a1a1bc]">Loading project...</span>
+        </div>
+      </div>
+    )
+  }
 
   if (!project) {
     return (
@@ -314,14 +332,14 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
 
   return (
     <ErrorBoundary>
-      <div className="h-screen flex flex-col bg-[#0a0a0f]">
+      <div className="min-h-screen flex flex-col bg-[#0a0a0f]">
         <Navbar
           projectTitle={project.title}
           showExport={!!analysisResult}
           onExport={handleExport}
         />
         
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex">
           {/* Left Sidebar */}
           <Sidebar
             scenes={project.scenes}
@@ -339,13 +357,13 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
           />
 
           {/* Main Content */}
-          <main className="flex-1 flex flex-col overflow-hidden">
+          <main className="flex-1 flex flex-col overflow-y-auto">
             {!currentScene ? (
               <div className="flex-1 flex items-center justify-center">
                 <ScenesEmptyState onAddScene={handleAddScene} />
               </div>
             ) : (
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
                 <div className="px-6 pt-4 border-b border-white/5">
                   <TabsList className="bg-white/5">
                     <TabsTrigger value="input" className="gap-2 data-[state=active]:bg-[#c084fc]/20">
@@ -380,8 +398,8 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                 </div>
 
                 <ScrollArea className="flex-1">
-                  <div className="p-6">
-{/* INPUT TAB */}
+<div className="p-6 pb-24">
+  {/* INPUT TAB */}
                       <TabsContent value="input" className="mt-0">
                         <motion.div
                           initial={{ opacity: 0, y: 10 }}
@@ -685,11 +703,11 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                               </a>
                             </div>
                           </motion.div>
-)}
-  </TabsContent>
-  </div>
-                </ScrollArea>
-              </Tabs>
+                        )}
+                      </TabsContent>
+                    </div>
+                  </ScrollArea>
+                </Tabs>
             )}
           </main>
 

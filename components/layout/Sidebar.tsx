@@ -24,7 +24,7 @@ export function Sidebar({
   onDeleteScene
 }: SidebarProps) {
   return (
-    <aside className="w-[260px] border-r border-white/5 bg-[#0a0a0f] flex flex-col h-full">
+    <aside className="w-[260px] border-r border-white/5 bg-[#0a0a0f] flex flex-col sticky top-0 h-screen">
       {/* Scenes Section */}
       <div className="p-4 border-b border-white/5">
         <div className="flex items-center justify-between mb-3">
