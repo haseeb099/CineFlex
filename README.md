@@ -11,306 +11,128 @@ CineFlex is a production-ready agentic AI filmmaking operating system that uses 
 
 ---
 
-## Table of Contents
+## Demo Video
 
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Architecture](#architecture)
-- [The Nine AI Agents](#the-nine-ai-agents)
-- [API Routes](#api-routes)
-- [Project Structure](#project-structure)
-- [Environment Variables](#environment-variables)
-- [Getting Started](#getting-started)
-- [How It Works](#how-it-works)
-- [Style Memory System](#style-memory-system)
-- [Security](#security)
-- [Deployment](#deployment)
-- [Contributing](#contributing)
-- [License](#license)
+[Watch the CineFlex Demo](https://your-demo-link.com)
 
 ---
 
-## Overview
+## Quick Start
 
-CineFlex transforms raw scene ideas into complete cinematic packages through an agentic AI workflow. Unlike traditional AI tools that simply generate content, CineFlex employs a **multi-agent architecture** where nine specialist AI agents collaborate like a real film development team:
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/cineflex.git
+cd cineflex
 
-1. Analyze your scene description
-2. Detect creative gaps and opportunities
-3. Generate suggestions from multiple cinematic perspectives
-4. Produce storyboards, shot lists, and audio mood descriptions
-5. Maintain creative consistency across scenes via Style Memory
+# Install dependencies
+pnpm install
+
+# Set up environment variables
+cp .env.example .env.local
+# Add your API keys (see Environment Variables section)
+
+# Run the development server
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) to start creating!
 
 ---
 
 ## Features
 
-### Core Features
+### Core Workflow
+
+| Step | Feature | Description |
+|------|---------|-------------|
+| 1 | **Write Scene** | Enter your scene description with voice input or text |
+| 2 | **Enhance Prompt** | AI transforms raw ideas into cinematic descriptions |
+| 3 | **Extract Elements** | Auto-extract characters, locations, vehicles, props |
+| 4 | **Analyze Scene** | 9 AI agents analyze from different perspectives |
+| 5 | **Generate Storyboard** | Create visual storyboard frames with AI |
+| 6 | **Generate Audio** | Create voiceover and music for your scene |
+| 7 | **Create Video** | Generate AI video from storyboard frames |
+| 8 | **Export** | Download complete cinematic package |
+
+### AI-Powered Features
 
 | Feature | Description |
 |---------|-------------|
-| **Multi-Agent Analysis** | Nine AI agents analyze scenes from different professional perspectives |
-| **Gap Detection** | Identifies missing elements in your scene (motivation, conflict, visual details) |
-| **Prompt Enhancement** | AI-powered prompt improvement to transform raw ideas into cinematic descriptions |
-| **Scene Splitting** | Automatically breaks long narratives into manageable scenes |
-| **Storyboard Generation** | Creates visual storyboard frames with camera movements and shot types |
-| **Shot List Creation** | Professional shot lists with lens, lighting, and camera movement details |
-| **Audio Mood Design** | Comprehensive sound design recommendations and mood descriptions |
-| **Style Memory** | Maintains creative consistency across multiple scenes |
-| **Export Package** | Download complete cinematic packages as markdown or copy to clipboard |
+| **Voice Input** | Speak your scene description (click mic icon) |
+| **Scene Splitting** | Break long narratives into multiple scenes |
+| **Concept Previews** | Generate visual previews for characters, locations, props |
+| **Shot List** | Professional shot list with camera, lens, lighting details |
+| **Style Memory** | Maintain creative consistency across scenes |
 
-### UI Features
+### Image Generation
 
-| Feature | Description |
-|---------|-------------|
-| **Dark Cinematic Theme** | Premium dark UI inspired by Midjourney, Linear, and Kling AI |
-| **Glass Morphism Panels** | Modern backdrop-blur effects with subtle transparency |
-| **Real-time Agent Status** | Animated status indicators showing agent progress |
-| **4-Tab Workspace** | Organized workflow: Input → Review → Generate → Package |
-| **Responsive Design** | Works on desktop and tablet (iPad minimum) |
-| **Framer Motion Animations** | Smooth transitions and micro-interactions |
+CineFlex uses **Runware API** (FLUX model) for high-quality storyboard images with automatic **Pollinations.ai** fallback (free, no API key needed).
 
----
+### Video Generation
 
-## Tech Stack
-
-### Frontend
-
-| Technology | Purpose |
-|------------|---------|
-| **Next.js 16** | React framework with App Router |
-| **TypeScript** | Type-safe development |
-| **Tailwind CSS 4** | Utility-first styling |
-| **shadcn/ui** | Accessible component library |
-| **Framer Motion** | Animations and transitions |
-| **Zustand** | Global state management with persistence |
-| **TanStack Query** | Server state and caching |
-
-### Backend
-
-| Technology | Purpose |
-|------------|---------|
-| **Next.js API Routes** | Serverless API endpoints |
-| **Vercel AI SDK** | AI model integration |
-| **Groq** | Fast LLM inference (llama-3.3-70b-versatile) |
-
-### Optional Integrations
-
-| Integration | Purpose |
-|-------------|---------|
-| **Runware** | AI image generation for storyboards |
-| **ElevenLabs** | AI audio generation for mood tracks |
-| **Sentry** | Error tracking and monitoring |
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         CineFlex UI                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────┐│
-│  │   INPUT     │  │   REVIEW    │  │  GENERATE   │  │ PACKAGE ││
-│  │   Scene     │  │   Gaps &    │  │ Storyboard  │  │  Export ││
-│  │   Entry     │  │ Suggestions │  │  Shot List  │  │  Share  ││
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────┘│
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       API Layer                                  │
-│  /api/analyze  /api/enhance-prompt  /api/generate-storyboard   │
-│  /api/generate-audio  /api/generate-motion  /api/export        │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Orchestrator Agent                            │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Coordinates all agents, synthesizes outputs, produces:   │  │
-│  │  • Unified logline        • Merged suggestions            │  │
-│  │  • Storyboard prompts     • Shot list                     │  │
-│  │  • Audio mood             • Style memory updates          │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          │                   │                   │
-          ▼                   ▼                   ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│    Director     │ │  Script Doctor  │ │ Cinematographer │
-│    Agent        │ │     Agent       │ │     Agent       │
-│                 │ │                 │ │                 │
-│ Vision, pacing, │ │ Story, conflict,│ │ Visual language,│
-│ emotional arc,  │ │ motivation,     │ │ camera, lighting│
-│ hero shot       │ │ dialogue        │ │ lens choices    │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
-          │                   │                   │
-          ▼                   ▼                   ▼
-┌─────────────────┐ ┌─────────────────┐
-│  Sound Design   │ │    Producer     │
-│     Agent       │ │     Agent       │
-│                 │ │                 │
-│ Acoustic world, │ │ Budget, risk,   │
-│ score, SFX,     │ │ logistics,      │
-│ silence         │ │ simplification  │
-└─────────────────┘ └─────────────────┘
-```
+CineFlex can generate actual AI videos from your storyboard frames using:
+- **Popcorn.video** - Image-to-video API
+- **Runware** - Image-to-video capability
 
 ---
 
 ## The Nine AI Agents
 
-### 1. Director Agent
-**Focus:** Cinematic vision, emotional architecture, directorial intent
-
-- Identifies the "hero shot" that anchors each scene
-- Analyzes emotional journey and pacing
-- References real directors (Tarkovsky, Fincher, Villeneuve)
-- Detects gaps in directorial concept
-
-### 2. Script Doctor Agent
-**Focus:** Story, structure, character, dialogue
-
-- Evaluates character motivation and conflict
-- Detects plot holes and continuity risks
-- Analyzes subtext and thematic elements
-- Uses screenwriting principles (inciting incident, midpoint, climax)
-
-### 3. Cinematography Agent
-**Focus:** Visual language, camera, lighting
-
-- Recommends focal lengths and camera movements
-- Suggests lighting setups and color grades
-- Defines aspect ratio and visual style
-- References real DPs (Deakins, Lubezki, Richardson)
-
-### 4. Sound Design Agent
-**Focus:** Acoustic world, score, silence
-
-- Defines the acoustic texture of scenes
-- Plans SFX placement and score direction
-- Recommends strategic use of silence
-- References composers (Greenwood, Zimmer, Desplat)
-
-### 5. Producer Agent
-**Focus:** Resources, risk, feasibility
-
-- Assesses production complexity
-- Identifies logistical risks and budget considerations
-- Estimates locations, cast size, and day count
-- Suggests simplifications without compromising vision
-
-### 6. Editor Agent
-**Focus:** Pacing, rhythm, transitions, montage
-
-- Analyzes scene rhythm and timing
-- Suggests cut points and transition styles
-- Recommends montage sequences
-- References editing masters (Thelma Schoonmaker, Walter Murch)
-
-### 7. Storyboard Artist Agent
-**Focus:** Visual composition, frame design, shot flow
-
-- Creates detailed frame compositions
-- Plans visual continuity between shots
-- Suggests camera angles and movements
-- Designs key visual moments
-
-### 8. Continuity Supervisor Agent
-**Focus:** Consistency, timeline, props, wardrobe
-
-- Tracks timeline and logical flow
-- Identifies continuity errors
-- Monitors prop and wardrobe consistency
-- Ensures scene-to-scene coherence
-
-### 9. Marketing Agent
-**Focus:** Audience appeal, taglines, promotional hooks
-
-- Identifies marketable moments
-- Suggests promotional taglines
-- Analyzes audience appeal
-- Creates pitch-ready descriptions
+| Agent | Focus Area |
+|-------|------------|
+| **Director** | Vision, pacing, emotional arc, hero shots |
+| **Script Doctor** | Story, conflict, motivation, dialogue |
+| **Cinematographer** | Visual language, camera, lighting, lens |
+| **Sound Designer** | Music, SFX, ambient, silence |
+| **Producer** | Budget, risk, logistics, feasibility |
+| **Editor** | Pacing, rhythm, transitions, montage |
+| **Storyboard Artist** | Frame composition, shot flow |
+| **Continuity Supervisor** | Consistency, timeline, props |
+| **Marketing** | Audience appeal, taglines, hooks |
 
 ---
 
-## API Routes
+## Environment Variables
 
-### Core Analysis
+### Required
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/analyze` | POST | Main analysis endpoint - runs all 9 agents and orchestrator |
-| `/api/enhance-prompt` | POST | Enhances raw prompts into cinematic descriptions |
+| Variable | Description | Get It From |
+|----------|-------------|-------------|
+| `GROQ_API_KEY` | Powers all AI agents | [console.groq.com](https://console.groq.com) |
 
-### Generation
+### Recommended
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/generate-storyboard` | POST | Generates storyboard frame images via Runware FLUX |
-| `/api/generate-audio` | POST | Generates scene music via ElevenLabs Music API |
-| `/api/generate-video` | POST | Generates video clips via Runware image-to-video |
-| `/api/generate-motion` | POST | Generates motion teaser prompts |
-| `/api/export` | POST | Exports complete cinematic package |
-| `/api/export-bundle` | POST | Exports full project (Markdown, JSON, CSV shot list) |
+| Variable | Description | Get It From |
+|----------|-------------|-------------|
+| `RUNWARE_API_KEY` | AI image generation (FLUX) | [runware.ai](https://runware.ai) |
+| `ELEVENLABS_API_KEY` | AI voiceover generation | [elevenlabs.io](https://elevenlabs.io) |
 
-### Project Management
+### Optional
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/projects` | GET | List all projects |
-| `/api/projects` | POST | Create new project |
-| `/api/projects/[id]` | GET | Get single project |
-| `/api/projects/[id]` | PUT | Update project |
-| `/api/projects/[id]` | DELETE | Delete project |
+| Variable | Description | Get It From |
+|----------|-------------|-------------|
+| `POPCORN_API_KEY` | AI video generation | [popcorn.video](https://popcorn.video) |
+| `ANTHROPIC_API_KEY` | Alternative LLM | [anthropic.com](https://anthropic.com) |
 
-### API Request/Response Examples
+### Example .env.local
 
-#### Analyze Scene
-
-```typescript
-// POST /api/analyze
-{
-  "sceneInput": "A detective enters an abandoned warehouse at midnight...",
-  "projectContext": "Neo-noir thriller set in 2045 Tokyo",
-  "styleMemory": { /* previous style preferences */ }
-}
-
-// Response
-{
-  "logline": "A haunted detective confronts his past...",
-  "refinedScene": "Enhanced scene description...",
-  "gaps": [
-    { "category": "character", "description": "Missing internal conflict", "severity": "high" }
-  ],
-  "suggestions": [
-    { "agent": "director", "suggestion": "Add rain for pathetic fallacy", "impact": "high" }
-  ],
-  "storyboardFrames": [...],
-  "shotList": [...],
-  "audioMood": {...},
-  "styleMemoryUpdates": {...}
-}
+```env
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+RUNWARE_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ELEVENLABS_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-#### Enhance Prompt
+---
 
-```typescript
-// POST /api/enhance-prompt
-{
-  "prompt": "detective in warehouse",
-  "projectContext": "noir thriller"
-}
+## Tech Stack
 
-// Response
-{
-  "enhanced": "A world-weary detective, silhouette cut sharp against...",
-  "scenes": [
-    { "title": "Scene 1: The Arrival", "content": "..." }
-  ]
-}
-```
+| Layer | Technologies |
+|-------|--------------|
+| **Frontend** | Next.js 16, TypeScript, Tailwind CSS 4, shadcn/ui, Framer Motion |
+| **State** | Zustand (global), TanStack Query (server) |
+| **AI** | Groq (LLM), Runware (images), ElevenLabs (audio) |
+| **Backend** | Next.js API Routes, Vercel AI SDK |
 
 ---
 
@@ -319,365 +141,182 @@ CineFlex transforms raw scene ideas into complete cinematic packages through an 
 ```
 cineflex/
 ├── app/
-│   ├── api/
-│   │   ├── analyze/
-│   │   │   └── route.ts          # Main analysis endpoint
-│   │   ├── enhance-prompt/
-│   │   │   └── route.ts          # Prompt enhancement
-│   │   ├── generate-storyboard/
-│   │   │   └── route.ts          # Image generation
-│   │   ├── generate-audio/
-│   │   │   └── route.ts          # Audio generation
-│   │   ├── generate-motion/
-│   │   │   └── route.ts          # Motion teaser
-│   │   ├── export/
-│   │   │   └── route.ts          # Package export
-│   │   └── projects/
-│   │       ├── route.ts          # Projects CRUD
-│   │       └── [id]/
-│   │           └── route.ts      # Single project
+│   ├── api/                    # API endpoints
+│   │   ├── analyze/            # Multi-agent analysis
+│   │   ├── enhance-prompt/     # Prompt enhancement
+│   │   ├── extract-elements/   # Element extraction
+│   │   ├── generate-storyboard/# Image generation
+│   │   ├── generate-video/     # Video generation
+│   │   ├── generate-voiceover/ # Voiceover generation
+│   │   └── projects/           # Project CRUD
 │   ├── projects/
-│   │   ├── page.tsx              # Projects list
-│   │   └── [id]/
-│   │       ├── page.tsx          # Project workspace
-│   │       └── loading.tsx       # Loading state
-│   ├── globals.css               # Global styles & theme
-│   ├── layout.tsx                # Root layout
-│   ├── page.tsx                  # Landing page
-│   └── providers.tsx             # React Query provider
-│
+│   │   └── [id]/page.tsx       # Project workspace
+│   └── page.tsx                # Landing page
 ├── components/
-│   ├── agents/
-│   │   └── AgentStatusBar.tsx    # Agent status indicators
-│   ├── layout/
-│   │   ├── Navbar.tsx            # Top navigation
-│   │   └── Sidebar.tsx           # Scene list sidebar
-│   ├── shared/
-│   │   ├── EmptyState.tsx        # Empty state component
-│   │   ├── ErrorBoundary.tsx     # Error boundary
-│   │   └── SkeletonLoader.tsx    # Loading skeletons
-│   ├── ui/                       # shadcn/ui components
-│   └── workspace/
-│       ├── AnalysisPanel.tsx     # Gap & suggestion display
-│       ├── AudioPlayer.tsx       # Audio mood player
-│       ├── CinematicPackage.tsx  # Final package view
-│       ├── MotionTeaser.tsx      # Motion preview
-│       ├── SceneInput.tsx        # Scene input with enhance
-│       ├── ShotList.tsx          # Shot list table
-│       ├── StoryboardGrid.tsx    # Storyboard frames
-│       ├── StyleMemoryPanel.tsx  # Style memory display
-│       └── SuggestionCard.tsx    # Individual suggestion
-│
+│   ├── agents/                 # Agent status display
+│   ├── workspace/              # Main workspace components
+│   │   ├── SceneInput.tsx      # Voice + text input
+│   │   ├── ConceptEditor.tsx   # Element management
+│   │   ├── StoryboardEditor.tsx# Storyboard frames
+│   │   ├── VideoStudio.tsx     # Video preview
+│   │   └── ...
+│   └── ui/                     # shadcn/ui components
 ├── lib/
-│   ├── agents/
-│   │   ├── director.ts           # Director agent
-│   │   ├── scriptDoctor.ts       # Script doctor agent
-│   │   ├── cinematography.ts     # Cinematography agent
-│   │   ├── soundDesign.ts        # Sound design agent
-│   │   ├── producer.ts           # Producer agent
-│   │   └── orchestrator.ts       # Main orchestrator
-│   ├── store/
-│   │   ├── projectStore.ts       # Project state (Zustand)
-│   │   └── sceneStore.ts         # Scene state (Zustand)
-│   ├── types/
-│   │   └── index.ts              # TypeScript interfaces
-│   └── utils/
-│       ├── export.ts             # Export utilities
-│       ├── rateLimit.ts          # Rate limiting
-│       └── sanitize.ts           # Input sanitization
-│
-├── middleware.ts                  # Security headers
-├── next.config.mjs               # Next.js config
-├── package.json                  # Dependencies
-├── tailwind.config.ts            # Tailwind config
-└── tsconfig.json                 # TypeScript config
+│   ├── agents/                 # Agent implementations
+│   ├── store/                  # Zustand stores
+│   └── utils/                  # Utilities
+└── types/                      # TypeScript types
 ```
 
 ---
 
-## Environment Variables
+## API Endpoints
 
-### Required
-
-| Variable | Description |
-|----------|-------------|
-| `GROQ_API_KEY` | Groq API key for LLM inference (powers all agents) |
-
-### Optional
-
-| Variable | Description | Fallback |
-|----------|-------------|----------|
-| `RUNWARE_API_KEY` | Runware API for storyboard image generation | Placeholder images |
-| `ELEVENLABS_API_KEY` | ElevenLabs API for audio generation | Text descriptions only |
-| `NEXT_PUBLIC_APP_URL` | Deployment URL for CORS | localhost |
-
-### Setting Up Environment Variables
-
-1. Copy the example environment file:
-   ```bash
-   cp .env.example .env.local
-   ```
-
-2. Add your API keys:
-   ```env
-   GROQ_API_KEY=gsk_xxxxxxxxxxxxx
-   RUNWARE_API_KEY=xxxxxxxxxxxxx
-   ELEVENLABS_API_KEY=xxxxxxxxxxxxx
-   NEXT_PUBLIC_APP_URL=https://your-domain.vercel.app
-   ```
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/analyze` | POST | Run all 9 AI agents on a scene |
+| `/api/enhance-prompt` | POST | Enhance raw prompt into cinematic description |
+| `/api/extract-elements` | POST | Extract characters, locations, props from prompt |
+| `/api/generate-storyboard` | POST | Generate storyboard images |
+| `/api/generate-video` | POST | Generate video from frames |
+| `/api/generate-voiceover` | POST | Generate voiceover audio |
+| `/api/projects` | GET/POST | List or create projects |
+| `/api/projects/[id]` | GET/PUT/DELETE | Single project operations |
 
 ---
 
-## Getting Started
+## How Image Generation Works
 
-### Prerequisites
+CineFlex uses a dual-provider system for reliable image generation:
 
-- Node.js 18+
-- pnpm (recommended) or npm
+### Primary: Runware API
+- Model: FLUX.1 (runware:100@1)
+- Quality: High (1280x720)
+- Speed: ~2-4 seconds per image
 
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/cineflex.git
-   cd cineflex
-   ```
-
-2. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-
-3. Set up environment variables (see above)
-
-4. Run the development server:
-   ```bash
-   pnpm dev
-   ```
-
-5. Open [http://localhost:3000](http://localhost:3000)
-
-### Quick Start
-
-1. Click **"New Project"** on the landing page
-2. Enter a project title, select genre and visual style
-3. Write or paste your scene description
-4. Click **"Enhance Prompt"** to improve your input (optional)
-5. Click **"Analyze Scene"** to run all 5 agents
-6. Review gaps and suggestions in the **Review** tab
-7. Accept/reject suggestions to refine your scene
-8. Generate storyboards and audio in the **Generate** tab
-9. Export your complete package in the **Package** tab
-
----
-
-## How It Works
-
-### Analysis Flow
-
-```
-User Input → Sanitization → Rate Limit Check → Parallel Agent Execution
-                                                        │
-                ┌───────────────────────────────────────┘
-                │
-                ▼
-    ┌─────────────────────────────────────────────────────┐
-    │              Parallel Agent Execution                │
-    │                                                      │
-    │  Director ──┐                                        │
-    │  Script ────┼──► All 5 agents run simultaneously    │
-    │  Cinema ────┤                                        │
-    │  Sound ─────┤                                        │
-    │  Producer ──┘                                        │
-    └─────────────────────────────────────────────────────┘
-                │
-                ▼
-    ┌─────────────────────────────────────────────────────┐
-    │              Orchestrator Synthesis                  │
-    │                                                      │
-    │  • Merges all agent outputs                         │
-    │  • Deduplicates suggestions                         │
-    │  • Ranks by impact                                  │
-    │  • Generates unified outputs                        │
-    │  • Updates style memory                             │
-    └─────────────────────────────────────────────────────┘
-                │
-                ▼
-           JSON Response
-```
-
-### Suggestion Workflow
-
-Each suggestion can be:
-- **Accepted** → Applied to the refined scene
-- **Rejected** → Marked as not applicable
-- **Edited** → Modified before applying
-
----
-
-## Style Memory System
-
-Style Memory maintains creative consistency across scenes in a project. It tracks:
-
-| Category | What It Stores |
-|----------|----------------|
-| **Tone** | Overall mood (melancholic, tense, hopeful) |
-| **Color Palette** | Dominant colors and grades |
-| **Camera Language** | Preferred shot types and movements |
-| **Pace Descriptor** | Editing rhythm and scene pacing |
-| **Emotional Arc** | Journey through the project |
-| **Recurring Motifs** | Visual and thematic patterns |
-| **Character Notes** | Per-character style preferences |
-| **Visual Style** | Overall aesthetic approach |
-| **Sound Signatures** | Recurring audio elements |
-
-Style Memory is automatically updated after each scene analysis and influences subsequent scene recommendations.
-
----
-
-## Security
-
-CineFlex implements multiple security measures:
-
-### API Security
-
-- **Rate Limiting**: 10 requests per minute per IP
-- **Input Sanitization**: All user input is sanitized before processing
-- **Server-Side Secrets**: API keys never exposed to client
-
-### Middleware Security Headers
+### Fallback: Pollinations.ai
+- Model: FLUX
+- Quality: Good (1280x720)
+- Cost: FREE (no API key needed)
+- Always available as backup
 
 ```typescript
-{
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'X-XSS-Protection': '1; mode=block',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+// The system automatically falls back if Runware fails
+if (runwareKey) {
+  // Try Runware first
+  const response = await fetch('https://api.runware.ai/v1', {...})
+}
+if (!imageUrl) {
+  // Fallback to Pollinations (always works)
+  imageUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1280&height=720`
 }
 ```
 
-### Best Practices
+---
 
-- No API keys in client-side code
-- Error boundaries on all pages
-- Proper CORS configuration
-- Input validation and length limits
+## Voice Input
+
+CineFlex supports voice input for scene descriptions:
+
+1. Click the **microphone icon** in the scene input area
+2. Allow microphone permission when prompted
+3. Speak your scene description
+4. Click again to stop recording
+
+**Note:** Voice input requires:
+- A modern browser (Chrome, Edge, Safari)
+- Microphone permission granted
+- HTTPS connection (or localhost)
+
+If you see "Microphone access denied":
+1. Click the lock/info icon in your browser's address bar
+2. Find "Microphone" in site settings
+3. Change to "Allow"
+4. Refresh the page
 
 ---
 
 ## Deployment
 
-### Deploy to Vercel
+### Deploy to Vercel (Recommended)
 
 1. Push your code to GitHub
-2. Import the repository in [Vercel](https://vercel.com)
-3. Add environment variables in project settings
+2. Import in [Vercel](https://vercel.com)
+3. Add environment variables in Settings > Environment Variables
 4. Deploy
 
-Or use the CLI:
+### One-Click Deploy
 
-```bash
-npx vercel
-```
-
-### Environment Variables in Vercel
-
-Add these in your Vercel project settings:
-
-- `GROQ_API_KEY`
-- `RUNWARE_API_KEY` (optional)
-- `ELEVENLABS_API_KEY` (optional)
-- `NEXT_PUBLIC_APP_URL`
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yourusername/cineflex)
 
 ---
 
-## Performance
+## Security
 
-- **Parallel Agent Execution**: All 5 agents run simultaneously for faster analysis
-- **Groq Inference**: Uses Groq's fast LLM inference for sub-second responses
-- **Client-Side Caching**: Zustand with localStorage persistence
-- **Server-Side Caching**: TanStack Query for API response caching
-- **Optimistic Updates**: UI updates immediately while awaiting responses
-
----
-
-## Graceful Degradation
-
-CineFlex works with minimal configuration:
-
-| API Key Available | Functionality |
-|-------------------|---------------|
-| **Only GROQ_API_KEY** | Full analysis, text-only outputs |
-| **+ RUNWARE_API_KEY** | + Generated storyboard images |
-| **+ ELEVENLABS_API_KEY** | + Generated audio mood |
-| **All keys** | Complete feature set |
+- **No API keys in client code** - All secrets server-side only
+- **Rate limiting** - 10 requests/minute per IP
+- **Input sanitization** - All user input sanitized
+- **Security headers** - XSS, CSRF, clickjacking protection
+- **Error boundaries** - Graceful error handling
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
+### Images not generating?
 
-| Issue | Solution |
-|-------|----------|
-| "API not configured" | Add `GROQ_API_KEY` to environment variables |
-| Storyboard shows placeholders | Add `RUNWARE_API_KEY` or images will use picsum.photos |
-| Audio shows description only | Add `ELEVENLABS_API_KEY` for generated audio |
-| Rate limit exceeded | Wait 1 minute before retrying |
-| Hydration mismatch | Clear browser cache and localStorage |
+1. Check if `RUNWARE_API_KEY` is set in Settings > Vars
+2. If not set, Pollinations.ai (free) will be used automatically
+3. Check console for error messages
 
-### Debug Mode
+### Enhance prompt failing?
 
-Add console logs with the `[v0]` prefix for debugging:
+1. Check if `GROQ_API_KEY` is set
+2. If Groq rate limited, wait 60 seconds and retry
+3. The system has fallback logic that works without AI
 
-```typescript
-console.log("[v0] Analysis result:", result)
-```
+### Video not generating?
+
+1. Video generation requires `POPCORN_API_KEY` or `RUNWARE_API_KEY`
+2. Without these, videos appear as slideshows of images
+3. Each video clip takes 30-60 seconds to generate
+
+### Voice input not working?
+
+1. Click the lock icon in browser address bar
+2. Allow microphone permission
+3. Refresh the page
+4. Use HTTPS or localhost
 
 ---
 
 ## Contributing
 
+Contributions are welcome! Please read our contributing guidelines.
+
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
----
-
-## Roadmap
-
-- [ ] Real-time collaboration
-- [ ] Video generation integration
-- [ ] Voice-over generation
-- [ ] Project templates
-- [ ] Export to Final Draft format
-- [ ] Integration with production tools
 
 ---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
 ## Acknowledgments
 
-- Built for **Big Screen Hack 2026** - Theme: "INTO THE UNKNOWN"
-- Powered by [Groq](https://groq.com) for fast LLM inference
-- UI inspired by [Midjourney](https://midjourney.com), [Linear](https://linear.app), and [Kling AI](https://kling.ai)
-- Icons from [Lucide](https://lucide.dev)
-- Components from [shadcn/ui](https://ui.shadcn.com)
+- **Big Screen Hack 2026** - Hackathon organizers
+- **Groq** - Fast LLM inference
+- **Runware** - AI image generation
+- **Pollinations.ai** - Free image generation fallback
+- **ElevenLabs** - AI voice generation
+- **Vercel** - Hosting and deployment
 
 ---
 
-<p align="center">
-  <strong>CineFlex</strong> — Direct with AI. Not just prompt with AI.
-</p>
-
-<p align="center">
-  Made with passion for filmmakers and storytellers.
-</p>
+Built with love for filmmakers, by filmmakers. 🎬

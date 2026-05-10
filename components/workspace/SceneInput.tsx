@@ -53,10 +53,28 @@ export function SceneInput({
     }
   }, [])
   
+  // Request microphone permission explicitly first
+  const requestMicPermission = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach(track => track.stop()) // Stop immediately, we just need permission
+      return true
+    } catch {
+      return false
+    }
+  }, [])
+
   // Initialize speech recognition
-  const startListening = useCallback(() => {
+  const startListening = useCallback(async () => {
     if (!isVoiceSupported) {
-      toast.error('Voice input not supported in this browser')
+      toast.error('Voice input not supported in this browser. Please type your scene instead.')
+      return
+    }
+    
+    // Request permission first
+    const hasPermission = await requestMicPermission()
+    if (!hasPermission) {
+      toast.error('Microphone permission required. Please click the lock icon in your browser address bar and allow microphone access, then refresh.')
       return
     }
     

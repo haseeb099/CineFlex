@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/utils/rateLimit'
-import { runware } from '@runware/ai-sdk-provider'
-import { experimental_generateImage as generateImage } from 'ai'
 
 interface FramePrompt {
   id?: string
@@ -76,36 +74,48 @@ export async function POST(req: NextRequest) {
       const cinematicPrompt = buildCinematicPrompt(fp, characterLooks, settingDetails)
       let imageUrl: string | null = null
 
-      // Try Runware SDK first
+      // Try Runware API directly (no SDK)
       if (runwareKey) {
         try {
-          console.log(`[storyboard] Frame ${fp.frameNumber}: Using Runware SDK...`)
+          console.log(`[storyboard] Frame ${fp.frameNumber}: Calling Runware API...`)
           
-          const { image } = await generateImage({
-            model: runware.image('runware:100@1'), // FLUX.1 Schnell - fast
-            prompt: cinematicPrompt,
-            size: '1024x576' as `${number}x${number}`,
-            providerOptions: {
-              runware: {
-                steps: 4,
-                CFGScale: 7.5,
-                outputFormat: 'WEBP',
-              },
+          const response = await fetch('https://api.runware.ai/v1', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${runwareKey}`,
+              'Content-Type': 'application/json',
             },
+            body: JSON.stringify([{
+              taskType: 'imageInference',
+              taskUUID: crypto.randomUUID(),
+              positivePrompt: cinematicPrompt,
+              model: 'runware:100@1', // FLUX.1 Schnell
+              width: 1280,
+              height: 720,
+              numberResults: 1,
+              outputFormat: 'WEBP',
+              steps: 4,
+              CFGScale: 7.5,
+            }]),
           })
 
-          // The SDK returns image data - extract URL or base64
-          if (image) {
-            if ('base64' in image && image.base64) {
-              imageUrl = `data:image/webp;base64,${image.base64}`
+          if (response.ok) {
+            const data = await response.json()
+            console.log(`[storyboard] Frame ${fp.frameNumber} Runware response:`, JSON.stringify(data).slice(0, 200))
+            
+            // Handle response format
+            if (data?.data?.[0]?.imageURL) {
+              imageUrl = data.data[0].imageURL
               apiUsed = 'runware'
-              console.log(`[storyboard] Frame ${fp.frameNumber}: Runware SUCCESS (base64)`)
-            } else if ('uint8Array' in image && image.uint8Array) {
-              const base64 = Buffer.from(image.uint8Array).toString('base64')
-              imageUrl = `data:image/webp;base64,${base64}`
+              console.log(`[storyboard] Frame ${fp.frameNumber}: Runware SUCCESS`)
+            } else if (Array.isArray(data) && data[0]?.imageURL) {
+              imageUrl = data[0].imageURL
               apiUsed = 'runware'
-              console.log(`[storyboard] Frame ${fp.frameNumber}: Runware SUCCESS (uint8Array)`)
+              console.log(`[storyboard] Frame ${fp.frameNumber}: Runware SUCCESS (array format)`)
             }
+          } else {
+            const errText = await response.text()
+            console.error(`[storyboard] Frame ${fp.frameNumber}: Runware HTTP ${response.status}:`, errText.slice(0, 300))
           }
         } catch (err) {
           console.error(`[storyboard] Frame ${fp.frameNumber}: Runware error:`, err instanceof Error ? err.message : err)

@@ -167,12 +167,23 @@ Be detailed for AI image generation. Return ONLY valid JSON.`
         const jsonMatch = text.match(/\{[\s\S]*\}/)
         
         if (jsonMatch) {
-          const elements = JSON.parse(jsonMatch[0])
-          return NextResponse.json({
-            elements,
-            message: `Extracted ${elements.characters?.length || 0} characters, ${elements.locations?.length || 0} locations`,
-            success: true
-          })
+          // Clean JSON - remove comments that AI might add
+          let cleanJson = jsonMatch[0]
+            .replace(/\/\/[^\n]*/g, '') // Remove // comments
+            .replace(/\/\*[\s\S]*?\*\//g, '') // Remove /* */ comments
+            .replace(/,\s*}/g, '}') // Remove trailing commas before }
+            .replace(/,\s*]/g, ']') // Remove trailing commas before ]
+          
+          try {
+            const elements = JSON.parse(cleanJson)
+            return NextResponse.json({
+              elements,
+              message: `Extracted ${elements.characters?.length || 0} characters, ${elements.locations?.length || 0} locations`,
+              success: true
+            })
+          } catch (parseErr) {
+            console.error('[extract] JSON parse failed, using fallback')
+          }
         }
       }
     } catch (e) {
