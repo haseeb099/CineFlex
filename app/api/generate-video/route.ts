@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/utils/rateLimit'
-import * as fal from '@fal-ai/serverless-client'
 
 interface VideoFrame {
   frameNumber: number
@@ -13,9 +12,10 @@ interface VideoClip {
   frameNumber: number
   videoUrl: string | null
   sourceImage: string
-  status: 'pending' | 'generating' | 'done' | 'error'
+  status: 'pending' | 'generating' | 'done' | 'error' | 'processing'
   duration: number
   error?: string
+  jobId?: string
 }
 
 export async function POST(req: NextRequest) {
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { frames, sceneDescription, motionStrength = 'normal' } = await req.json()
+    const { frames, sceneDescription, audioUrl, voiceoverUrl, motionStrength = 'normal' } = await req.json()
 
     if (!frames || !Array.isArray(frames) || frames.length === 0) {
       return NextResponse.json(
@@ -39,77 +39,109 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Check for API keys
-    const falKey = process.env.FAL_KEY
+    // Check for API keys (Popcorn first, then Runware)
+    const popcornKey = process.env.POPCORN_API_KEY
     const runwareKey = process.env.RUNWARE_API_KEY
 
-    if (!falKey && !runwareKey) {
+    if (!popcornKey && !runwareKey) {
       return NextResponse.json({
-        error: 'No video generation API configured. Add FAL_KEY in Settings > Vars.',
+        error: 'No video generation API configured. Add POPCORN_API_KEY or RUNWARE_API_KEY in Settings > Vars.',
         clips: [],
         mode: 'error'
       }, { status: 500 })
     }
 
-    // Configure Fal if available
-    if (falKey) {
-      fal.config({ credentials: falKey })
-    }
-
     const generatedClips: VideoClip[] = []
+    let apiUsed = 'none'
     
-    // Motion strength mapping
-    const motionMap: Record<string, number> = {
-      subtle: 0.3,
-      normal: 0.5,
-      dynamic: 0.7,
-      intense: 0.9
+    // Motion strength mapping for different APIs
+    const motionMap: Record<string, { popcorn: string; runware: number; bucket: number }> = {
+      subtle: { popcorn: 'low', runware: 0.3, bucket: 40 },
+      normal: { popcorn: 'medium', runware: 0.5, bucket: 80 },
+      dynamic: { popcorn: 'high', runware: 0.7, bucket: 127 },
+      intense: { popcorn: 'very_high', runware: 0.9, bucket: 180 }
     }
-    const motionValue = motionMap[motionStrength] || 0.5
+    const motion = motionMap[motionStrength] || motionMap.normal
 
-    for (const frame of frames as VideoFrame[]) {
-      if (!frame.imageUrl) {
-        generatedClips.push({
-          frameNumber: frame.frameNumber,
-          videoUrl: null,
-          sourceImage: '',
-          status: 'error',
-          duration: frame.duration || 4,
-          error: 'No source image'
-        })
-        continue
-      }
+    // Filter frames with images
+    const framesWithImages = (frames as VideoFrame[]).filter(f => f.imageUrl)
+    
+    if (framesWithImages.length === 0) {
+      return NextResponse.json({
+        error: 'No frames with images found. Generate storyboard first.',
+        clips: [],
+        mode: 'error'
+      }, { status: 400 })
+    }
 
+    console.log(`[video] Starting video generation for ${framesWithImages.length} frames...`)
+
+    for (const frame of framesWithImages) {
       try {
-        console.log(`[video] Generating video for frame ${frame.frameNumber}...`)
+        let videoUrl: string | null = null
+        let jobId: string | undefined
 
-        if (falKey) {
-          // Use Fal.ai's image-to-video model (Stable Video Diffusion)
-          const result = await fal.subscribe('fal-ai/stable-video-diffusion', {
-            input: {
-              image_url: frame.imageUrl,
-              motion_bucket_id: Math.floor(motionValue * 255), // 0-255 motion intensity
-              fps: 24,
-              cond_aug: 0.02, // Low conditioning augmentation for stable results
+        if (popcornKey) {
+          apiUsed = 'popcorn'
+          console.log(`[video] Generating video for frame ${frame.frameNumber} with Popcorn...`)
+          
+          // Popcorn.co API for image-to-video
+          const response = await fetch('https://api.popcorn.video/v1/image-to-video', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${popcornKey}`,
+              'Content-Type': 'application/json',
             },
-          }) as { video?: { url?: string } }
-
-          const videoUrl = result.video?.url || null
-
-          generatedClips.push({
-            frameNumber: frame.frameNumber,
-            videoUrl,
-            sourceImage: frame.imageUrl,
-            status: videoUrl ? 'done' : 'error',
-            duration: frame.duration || 4,
-            error: videoUrl ? undefined : 'Video generation failed'
+            body: JSON.stringify({
+              image_url: frame.imageUrl,
+              prompt: `Subtle cinematic motion: ${frame.prompt}. Professional film movement, smooth camera, high quality.`,
+              motion_intensity: motion.popcorn,
+              duration: Math.min(frame.duration || 4, 5), // Max 5 seconds per clip
+              aspect_ratio: '16:9',
+              quality: 'high',
+            }),
           })
 
-          if (videoUrl) {
-            console.log(`[video] Frame ${frame.frameNumber} video generated successfully`)
+          if (response.ok) {
+            const data = await response.json()
+            console.log(`[video] Popcorn response:`, JSON.stringify(data).slice(0, 300))
+            
+            // Handle various response formats
+            videoUrl = data?.video_url || data?.output?.video_url || data?.result?.url || data?.url || null
+            jobId = data?.job_id || data?.id || data?.task_id
+            
+            if (!videoUrl && jobId) {
+              console.log(`[video] Popcorn job started: ${jobId} - polling for result...`)
+              
+              // Poll for completion (up to 60 seconds)
+              for (let i = 0; i < 12; i++) {
+                await new Promise(resolve => setTimeout(resolve, 5000))
+                
+                const statusResponse = await fetch(`https://api.popcorn.video/v1/jobs/${jobId}`, {
+                  headers: { 'Authorization': `Bearer ${popcornKey}` }
+                })
+                
+                if (statusResponse.ok) {
+                  const statusData = await statusResponse.json()
+                  if (statusData.status === 'completed' || statusData.status === 'success') {
+                    videoUrl = statusData.video_url || statusData.output?.video_url || statusData.result?.url
+                    break
+                  } else if (statusData.status === 'failed' || statusData.status === 'error') {
+                    console.error(`[video] Popcorn job failed:`, statusData.error)
+                    break
+                  }
+                }
+              }
+            }
+          } else {
+            const errorText = await response.text()
+            console.error(`[video] Popcorn error: ${response.status} - ${errorText}`)
           }
         } else if (runwareKey) {
-          // Use Runware's image-to-video API
+          apiUsed = 'runware'
+          console.log(`[video] Generating video for frame ${frame.frameNumber} with Runware...`)
+          
+          // Runware image-to-video API
           const response = await fetch('https://api.runware.ai/v1', {
             method: 'POST',
             headers: {
@@ -120,37 +152,43 @@ export async function POST(req: NextRequest) {
               taskType: 'imageToVideo',
               taskUUID: `video-${frame.frameNumber}-${Date.now()}`,
               inputImage: frame.imageUrl,
-              motionStrength: motionValue,
-              duration: frame.duration || 4,
+              motionBucketId: motion.bucket,
               fps: 24,
+              condAug: 0.02,
+              steps: 25,
               outputType: 'URL',
             }]),
           })
 
           if (response.ok) {
             const data = await response.json()
-            const videoUrl = Array.isArray(data) && data[0]?.videoURL 
-              ? data[0].videoURL 
-              : data?.videoURL
-
-            generatedClips.push({
-              frameNumber: frame.frameNumber,
-              videoUrl: videoUrl || null,
-              sourceImage: frame.imageUrl,
-              status: videoUrl ? 'done' : 'error',
-              duration: frame.duration || 4
-            })
+            console.log(`[video] Runware video response:`, JSON.stringify(data).slice(0, 300))
+            
+            if (Array.isArray(data) && data.length > 0) {
+              videoUrl = data[0]?.videoURL || data[0]?.videoUrl || null
+            } else if (data?.data && Array.isArray(data.data)) {
+              videoUrl = data.data[0]?.videoURL || data.data[0]?.videoUrl || null
+            }
           } else {
-            generatedClips.push({
-              frameNumber: frame.frameNumber,
-              videoUrl: null,
-              sourceImage: frame.imageUrl,
-              status: 'error',
-              duration: frame.duration || 4,
-              error: `API error: ${response.status}`
-            })
+            const errorText = await response.text()
+            console.error(`[video] Runware error: ${response.status} - ${errorText}`)
           }
         }
+
+        if (videoUrl) {
+          console.log(`[video] Frame ${frame.frameNumber} video generated: ${videoUrl.slice(0, 60)}...`)
+        }
+
+        generatedClips.push({
+          frameNumber: frame.frameNumber,
+          videoUrl,
+          sourceImage: frame.imageUrl,
+          status: videoUrl ? 'done' : jobId ? 'processing' : 'error',
+          duration: frame.duration || 4,
+          jobId,
+          error: !videoUrl && !jobId ? 'Video generation failed' : undefined
+        })
+
       } catch (frameError) {
         console.error(`[video] Error generating video for frame ${frame.frameNumber}:`, frameError)
         generatedClips.push({
@@ -165,17 +203,29 @@ export async function POST(req: NextRequest) {
     }
 
     const successCount = generatedClips.filter(c => c.videoUrl).length
+    const processingCount = generatedClips.filter(c => c.status === 'processing').length
     const totalDuration = generatedClips.reduce((sum, c) => sum + c.duration, 0)
 
     return NextResponse.json({
       clips: generatedClips,
-      mode: successCount > 0 ? 'generated' : 'error',
+      assembly: {
+        totalClips: generatedClips.length,
+        successfulClips: successCount,
+        processingClips: processingCount,
+        audioTrack: audioUrl || null,
+        voiceoverTrack: voiceoverUrl || null,
+        estimatedDuration: totalDuration,
+      },
+      mode: successCount > 0 ? 'generated' : processingCount > 0 ? 'processing' : 'error',
       message: successCount > 0 
-        ? `Generated ${successCount}/${generatedClips.length} video clips`
+        ? `Generated ${successCount}/${generatedClips.length} video clips (${totalDuration}s total)`
+        : processingCount > 0
+        ? `${processingCount} videos still processing...`
         : 'Video generation failed. Check your API key.',
       successCount,
       totalCount: generatedClips.length,
       totalDuration,
+      apiUsed,
       sceneDescription
     })
 

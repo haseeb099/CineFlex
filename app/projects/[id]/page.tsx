@@ -22,7 +22,8 @@ import {
   FileDown,
   Archive,
   Film,
-  Mic
+  Mic,
+  Users
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -36,6 +37,7 @@ import { StoryboardEditor } from '@/components/workspace/StoryboardEditor'
 import { VideoStudio } from '@/components/workspace/VideoStudio'
 import { AudioStudio } from '@/components/workspace/AudioStudio'
 import { FinalExport } from '@/components/workspace/FinalExport'
+import { ConceptEditor } from '@/components/workspace/ConceptEditor'
 import { ShotList, ShotListCompact } from '@/components/workspace/ShotList'
 import { ScenesEmptyState } from '@/components/shared/EmptyState'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
@@ -87,6 +89,19 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
   const [isExporting, setIsExporting] = useState(false)
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null)
   const [voiceoverUrl, setVoiceoverUrl] = useState<string | null>(null)
+  const [sceneElements, setSceneElements] = useState<{
+    characters: Array<{ id: string; name: string; description: string; role: 'protagonist' | 'antagonist' | 'supporting' | 'background'; [key: string]: unknown }>
+    vehicles: Array<{ id: string; type: string; description: string; [key: string]: unknown }>
+    locations: Array<{ id: string; name: string; type: string; description: string; [key: string]: unknown }>
+    props: Array<{ id: string; name: string; description: string; [key: string]: unknown }>
+    genre: string
+    mood: string
+    visualStyle: string
+    colorPalette: string[]
+    cinematicReferences: string[]
+    timeframe: string
+  } | null>(null)
+  const [isExtractingElements, setIsExtractingElements] = useState(false)
 
   // Get project after mounted to avoid hydration mismatch
   const project = mounted ? getProject(id) : null
@@ -214,6 +229,76 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
       setCurrentSceneId(remaining.length > 0 ? remaining[0].id : null)
     }
     toast.success('Scene deleted')
+  }
+
+  // Extract scene elements (characters, locations, vehicles, props)
+  const handleExtractElements = async () => {
+    if (!analysisResult?.refinedScene) return
+    
+    setIsExtractingElements(true)
+    try {
+      const response = await fetch('/api/extract-elements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: sceneInput,
+          enhancedPrompt: analysisResult.refinedScene
+        })
+      })
+
+      if (!response.ok) throw new Error('Element extraction failed')
+
+      const { elements } = await response.json()
+      setSceneElements(elements)
+      toast.success('Scene elements extracted!')
+    } catch (error) {
+      toast.error('Failed to extract elements')
+    } finally {
+      setIsExtractingElements(false)
+    }
+  }
+
+  // Generate AI preview for a concept (character, vehicle, location)
+  const handleGenerateConceptPreview = async (
+    type: string, 
+    item: { description: string; [key: string]: unknown }
+  ): Promise<string | null> => {
+    try {
+      let prompt = ''
+      
+      if (type === 'character') {
+        const char = item as { name?: string; description: string; clothing?: string; hairStyle?: string; hairColor?: string }
+        prompt = `Professional character portrait, cinematic lighting, film still: ${char.description}. ${char.clothing || ''}. Hair: ${char.hairStyle || ''} ${char.hairColor || ''}. Photorealistic, high detail, movie quality.`
+      } else if (type === 'vehicle') {
+        const veh = item as { type?: string; description: string; color?: string; make?: string; model?: string }
+        prompt = `Cinematic shot of ${veh.make || ''} ${veh.model || ''} ${veh.type || 'vehicle'}, ${veh.color || ''}: ${veh.description}. Professional automotive photography, dramatic lighting, film quality.`
+      } else if (type === 'location') {
+        const loc = item as { name?: string; description: string; timeOfDay?: string; weather?: string; mood?: string }
+        prompt = `Cinematic establishing shot, ${loc.timeOfDay || 'day'}, ${loc.weather || ''}: ${loc.description}. ${loc.mood || ''} atmosphere. Wide angle, professional cinematography, film quality.`
+      } else {
+        prompt = `Cinematic product shot: ${item.description}. Professional lighting, high detail, film quality prop photography.`
+      }
+
+      const response = await fetch('/api/generate-storyboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          framePrompts: [{
+            frameNumber: 1,
+            prompt: prompt,
+            shotType: type === 'character' ? 'MCU' : type === 'location' ? 'WS' : 'MS',
+            cameraMove: 'STATIC'
+          }]
+        })
+      })
+
+      if (!response.ok) return null
+
+      const { frames } = await response.json()
+      return frames[0]?.imageUrl || null
+    } catch {
+      return null
+    }
   }
 
   const handleAnalyze = async () => {
@@ -488,6 +573,14 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                       Review
                     </TabsTrigger>
                     <TabsTrigger
+                      value="concept"
+                      disabled={!analysisResult}
+                      className="gap-2 data-[state=active]:bg-[#a855f7]/20 data-[state=active]:text-[#a855f7]"
+                    >
+                      <Users className="w-4 h-4" />
+                      Concept
+                    </TabsTrigger>
+                    <TabsTrigger
                       value="storyboard"
                       disabled={!analysisResult}
                       className="gap-2 data-[state=active]:bg-[#c084fc]/20"
@@ -606,6 +699,67 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                             >
                               <RefreshCw className="w-4 h-4" />
                               Re-analyze
+                            </Button>
+                            <Button
+                              onClick={() => setActiveTab('concept')}
+                              className="gap-2 bg-[#a855f7] hover:bg-[#9333ea] text-white"
+                            >
+                              <Users className="w-4 h-4" />
+                              Design Concepts
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </TabsContent>
+
+                    {/* CONCEPT TAB */}
+                    <TabsContent value="concept" className="mt-0 data-[state=inactive]:hidden">
+                      {analysisResult && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="space-y-6"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h2 className="text-lg font-semibold text-white mb-1">
+                                Visual Concept Design
+                              </h2>
+                              <p className="text-sm text-[#52526b]">
+                                Define characters, locations, vehicles, and props. Generate AI previews to visualize your concepts.
+                              </p>
+                            </div>
+                            {!sceneElements && (
+                              <Button
+                                onClick={handleExtractElements}
+                                disabled={isExtractingElements}
+                                className="gap-2 bg-[#a855f7] hover:bg-[#9333ea] text-white"
+                              >
+                                {isExtractingElements ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Wand2 className="w-4 h-4" />
+                                )}
+                                Extract Elements
+                              </Button>
+                            )}
+                          </div>
+
+                          <ConceptEditor
+                            elements={sceneElements}
+                            onElementsChange={setSceneElements}
+                            onGeneratePreview={handleGenerateConceptPreview}
+                            isLoading={isExtractingElements}
+                          />
+
+                          <div className="flex gap-3 pt-4">
+                            <Button
+                              onClick={() => setActiveTab('review')}
+                              variant="outline"
+                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                              Back to Review
                             </Button>
                             <Button
                               onClick={() => setActiveTab('storyboard')}
