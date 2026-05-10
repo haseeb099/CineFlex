@@ -96,11 +96,19 @@ export async function POST(req: NextRequest) {
     const runwareKey = process.env.RUNWARE_API_KEY
     const imgnKey = process.env.IMGN_API_KEY
 
+    console.log('[storyboard] API Keys configured:', {
+      runware: runwareKey ? `${runwareKey.slice(0, 8)}...` : 'NOT SET',
+      imgn: imgnKey ? `${imgnKey.slice(0, 8)}...` : 'NOT SET'
+    })
+
     if (!runwareKey && !imgnKey) {
+      console.error('[storyboard] No image generation API configured')
       return NextResponse.json({
-        error: 'No image generation API configured. Add RUNWARE_API_KEY or IMGN_API_KEY in Settings > Vars.',
+        error: 'No image generation API configured',
+        message: 'Add RUNWARE_API_KEY or IMGN_API_KEY in Settings > Vars (gear icon top right)',
         frames: [],
-        mode: 'error'
+        mode: 'error',
+        apiStatus: { runware: false, imgn: false }
       }, { status: 500 })
     }
 

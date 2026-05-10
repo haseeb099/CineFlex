@@ -464,23 +464,43 @@ export function ConceptEditor({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Color Palette Preview - Fixed to show actual colors */}
+        {/* Color Palette Editor - Interactive color swatches */}
         <div className="flex items-center gap-3 p-3 rounded-lg bg-black/30 border border-white/5">
           <Palette className="w-4 h-4 text-[#a1a1bc]" />
           <span className="text-sm text-[#a1a1bc]">Color Palette:</span>
           <div className="flex gap-2">
             {displayColors.slice(0, 6).map((color, idx) => (
-              <div
-                key={idx}
-                className="w-8 h-8 rounded-lg border-2 border-white/20 shadow-lg relative group cursor-pointer hover:scale-110 transition-transform"
-                style={{ backgroundColor: color }}
-                title={elements.colorPalette?.[idx] || color}
-              >
+              <div key={idx} className="relative group">
+                <input
+                  type="color"
+                  value={color.startsWith('#') ? color : '#808080'}
+                  onChange={(e) => {
+                    const newPalette = [...(elements.colorPalette || [])]
+                    newPalette[idx] = e.target.value
+                    onElementsChange({ ...elements, colorPalette: newPalette })
+                  }}
+                  className="w-8 h-8 rounded-lg border-2 border-white/20 shadow-lg cursor-pointer hover:scale-110 transition-transform appearance-none bg-transparent [&::-webkit-color-swatch]:rounded-md [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch-wrapper]:p-0 [&::-moz-color-swatch]:rounded-md [&::-moz-color-swatch]:border-none"
+                  style={{ backgroundColor: color }}
+                  title={`Click to change: ${elements.colorPalette?.[idx] || color}`}
+                />
                 <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 px-1.5 py-0.5 rounded text-[9px] text-white whitespace-nowrap z-10">
                   {elements.colorPalette?.[idx] || color}
                 </div>
               </div>
             ))}
+            {/* Add color button */}
+            {displayColors.length < 6 && (
+              <button
+                onClick={() => {
+                  const newPalette = [...(elements.colorPalette || []), '#6b21a8']
+                  onElementsChange({ ...elements, colorPalette: newPalette })
+                }}
+                className="w-8 h-8 rounded-lg border-2 border-dashed border-white/20 flex items-center justify-center text-white/40 hover:border-white/40 hover:text-white/60 transition-all"
+                title="Add color"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
           </div>
           <span className="text-xs text-[#52526b] ml-auto">
             {elements.visualStyle}
@@ -526,8 +546,7 @@ export function ConceptEditor({
                 size="sm" 
                 onClick={handleGenerateAllPreviews}
                 disabled={isGeneratingAll}
-                variant="outline"
-                className="gap-2 border-[#c084fc]/30 text-[#c084fc] hover:bg-[#c084fc]/10"
+                className="gap-2 bg-[#c084fc] hover:bg-[#a855f7] text-black font-medium"
               >
                 {isGeneratingAll ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

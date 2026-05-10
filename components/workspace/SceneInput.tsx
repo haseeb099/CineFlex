@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import { Sparkles, Loader2, Wand2, Split, Check, ChevronDown } from 'lucide-react'
+import { Sparkles, Loader2, Wand2, Split, Check, ChevronDown, Mic, MicOff, Volume2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
@@ -38,6 +38,87 @@ export function SceneInput({
   const [isEnhancing, setIsEnhancing] = useState(false)
   const [isSplitting, setIsSplitting] = useState(false)
   const [wasEnhanced, setWasEnhanced] = useState(false)
+  
+  // Voice input state
+  const [isListening, setIsListening] = useState(false)
+  const [isVoiceSupported, setIsVoiceSupported] = useState(false)
+  const [interimTranscript, setInterimTranscript] = useState('')
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  
+  // Check for speech recognition support
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      setIsVoiceSupported(!!SpeechRecognition)
+    }
+  }, [])
+  
+  // Initialize speech recognition
+  const startListening = useCallback(() => {
+    if (!isVoiceSupported) {
+      toast.error('Voice input not supported in this browser')
+      return
+    }
+    
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const recognition = new SpeechRecognition()
+    
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+    
+    recognition.onstart = () => {
+      setIsListening(true)
+      toast.success('Listening... Speak your scene description')
+    }
+    
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = ''
+      let final = ''
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          final += transcript + ' '
+        } else {
+          interim += transcript
+        }
+      }
+      
+      if (final) {
+        onChange(value + (value ? ' ' : '') + final.trim())
+        setWasEnhanced(false)
+      }
+      setInterimTranscript(interim)
+    }
+    
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      console.error('[v0] Speech recognition error:', event.error)
+      if (event.error === 'not-allowed') {
+        toast.error('Microphone access denied. Please allow microphone access.')
+      } else {
+        toast.error('Voice recognition error: ' + event.error)
+      }
+      setIsListening(false)
+    }
+    
+    recognition.onend = () => {
+      setIsListening(false)
+      setInterimTranscript('')
+    }
+    
+    recognitionRef.current = recognition
+    recognition.start()
+  }, [isVoiceSupported, value, onChange])
+  
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      setIsListening(false)
+      setInterimTranscript('')
+      toast.info('Voice input stopped')
+    }
+  }, [])
 
   const canAnalyze = value.trim().length >= 10 && !isAnalyzing && !disabled && !isEnhancing && !isSplitting
   const canEnhance = value.trim().length >= 5 && !isEnhancing && !isSplitting && !isAnalyzing
@@ -117,22 +198,51 @@ export function SceneInput({
       {/* Main scene input */}
       <div className="relative">
         <Textarea
-          value={value}
+          value={isListening ? value + (interimTranscript ? ' ' + interimTranscript : '') : value}
           onChange={(e) => {
             onChange(e.target.value)
             setWasEnhanced(false)
           }}
           placeholder="Describe your scene. Raw ideas welcome. CineFlex will find what's missing and help you shape the cinematic vision...
 
-Tip: Paste a long story and click 'Split into Scenes' to break it into multiple scenes automatically."
+Tip: Click the microphone icon to speak your scene, or paste a long story and click 'Split into Scenes'."
           className={cn(
             'min-h-[200px] bg-[#111118] border-white/10 text-white placeholder:text-[#52526b]',
             'focus:border-[#c084fc]/50 focus:ring-[#c084fc]/20 resize-none',
-            'text-base leading-relaxed',
-            wasEnhanced && 'border-[#4ade80]/30'
+            'text-base leading-relaxed pr-14',
+            wasEnhanced && 'border-[#4ade80]/30',
+            isListening && 'border-red-500/50 ring-2 ring-red-500/20'
           )}
           disabled={isAnalyzing || isEnhancing || isSplitting}
         />
+        
+        {/* Voice input button - floating */}
+        {isVoiceSupported && (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={isListening ? stopListening : startListening}
+            disabled={isAnalyzing || isEnhancing || isSplitting}
+            className={cn(
+              'absolute top-3 right-3 w-10 h-10 rounded-full transition-all',
+              isListening 
+                ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
+                : 'bg-white/10 hover:bg-[#c084fc]/20 text-[#a1a1bc] hover:text-white'
+            )}
+            title={isListening ? 'Stop listening' : 'Speak your scene'}
+          >
+            {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          </Button>
+        )}
+        
+        {/* Listening indicator */}
+        {isListening && (
+          <div className="absolute top-16 right-3 flex items-center gap-2 bg-red-500/20 border border-red-500/30 px-3 py-1.5 rounded-full">
+            <Volume2 className="w-3 h-3 text-red-400 animate-pulse" />
+            <span className="text-xs text-red-400">Listening...</span>
+          </div>
+        )}
         
         {/* Character count and status */}
         <div className="absolute bottom-3 right-3 flex items-center gap-2">

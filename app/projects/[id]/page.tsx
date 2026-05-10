@@ -294,11 +294,23 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
         })
       })
 
-      if (!response.ok) return null
+      const data = await response.json()
+      
+      if (!response.ok) {
+        console.error('[v0] Preview generation failed:', data.error || data.message)
+        toast.error(data.error || 'Preview generation failed - check API keys in Settings > Vars')
+        return null
+      }
 
-      const { frames } = await response.json()
-      return frames[0]?.imageUrl || null
-    } catch {
+      if (data.mode === 'error') {
+        toast.error(data.message || 'Image API not configured')
+        return null
+      }
+
+      return data.frames?.[0]?.imageUrl || null
+    } catch (err) {
+      console.error('[v0] Preview generation error:', err)
+      toast.error('Preview generation failed')
       return null
     }
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Video,
@@ -72,17 +72,23 @@ export function VideoStudio({
   const audioRef = useRef<HTMLAudioElement>(null)
   const playbackInterval = useRef<NodeJS.Timeout | null>(null)
 
-  // Get frames with images
-  const framesWithImages = frames.filter(f => f.imageUrl)
+  // Get frames with images - memoize to prevent infinite loops
+  const framesWithImages = useMemo(() => frames.filter(f => f.imageUrl), [frames])
 
-  // Calculate total duration from frames
+  // Calculate total duration from frames - use stable dependency
   useEffect(() => {
+    if (framesWithImages.length === 0) {
+      setTotalDuration(0)
+      setVideoClips([])
+      return
+    }
+    
     const duration = framesWithImages.reduce((acc, f) => acc + (f.duration || 3), 0)
     setTotalDuration(duration)
     
     // Build timeline clips from frames
     let startTime = 0
-    const clips: TimelineClip[] = framesWithImages.map((frame, index) => {
+    const clips: TimelineClip[] = framesWithImages.map((frame) => {
       const clip: TimelineClip = {
         id: frame.id,
         type: 'image',
