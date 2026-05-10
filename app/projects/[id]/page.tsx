@@ -38,6 +38,7 @@ import { VideoStudio } from '@/components/workspace/VideoStudio'
 import { AudioStudio } from '@/components/workspace/AudioStudio'
 import { FinalExport } from '@/components/workspace/FinalExport'
 import { ConceptEditor } from '@/components/workspace/ConceptEditor'
+import { AutoPipeline } from '@/components/workspace/AutoPipeline'
 import { ShotList, ShotListCompact } from '@/components/workspace/ShotList'
 import { ScenesEmptyState } from '@/components/shared/EmptyState'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
@@ -102,6 +103,7 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     timeframe: string
   } | null>(null)
   const [isExtractingElements, setIsExtractingElements] = useState(false)
+  const [generatedAudioMood, setGeneratedAudioMood] = useState<AudioMood | null>(null)
 
   // Get project after mounted to avoid hydration mismatch
   const project = mounted ? getProject(id) : null
@@ -363,23 +365,56 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
 
     setGeneratingStoryboard(true)
     
+    // Build character and setting details from sceneElements if available
+    let characterLooks = ''
+    let settingDetails = ''
+    
+    if (sceneElements) {
+      // Combine character descriptions for consistent look
+      characterLooks = sceneElements.characters
+        .map(c => `${c.name}: ${c.description}. ${c.clothing || ''}`)
+        .join('. ')
+      
+      // Combine location and visual style info
+      settingDetails = [
+        sceneElements.visualStyle,
+        sceneElements.mood,
+        sceneElements.locations.map(l => l.description).join('. '),
+        `Color palette: ${sceneElements.colorPalette?.join(', ') || ''}`
+      ].filter(Boolean).join('. ')
+    }
+
+    // Set frames to generating state
+    const generatingFrames: StoryboardFrame[] = analysisResult.storyboardFramePrompts.map(f => ({
+      ...f,
+      status: 'generating' as const
+    }))
+    setAnalysisResult({ ...analysisResult, storyboardFramePrompts: generatingFrames })
+    
     try {
       const response = await fetch('/api/generate-storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          framePrompts: analysisResult.storyboardFramePrompts
+          framePrompts: analysisResult.storyboardFramePrompts,
+          characterLooks,
+          settingDetails
         })
       })
 
-      if (!response.ok) throw new Error('Storyboard generation failed')
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Storyboard generation failed')
+      }
 
-      const { frames } = await response.json()
+      const { frames, mode, message, successCount } = data
       
       const updatedFrames: StoryboardFrame[] = analysisResult.storyboardFramePrompts.map((f, i) => ({
         ...f,
         imageUrl: frames[i]?.imageUrl || f.imageUrl,
-        status: 'done' as const
+        status: frames[i]?.imageUrl ? 'done' as const : 'error' as const,
+        cinematicPrompt: frames[i]?.cinematicPrompt
       }))
 
       setAnalysisResult({
@@ -393,9 +428,22 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
         })
       }
 
-      toast.success('Storyboard generated!')
+      if (mode === 'error') {
+        toast.error(message || 'Image generation failed. Check API keys.')
+      } else if (successCount && successCount > 0) {
+        toast.success(`Generated ${successCount}/${frames.length} storyboard frames!`)
+      } else {
+        toast.success('Storyboard generated!')
+      }
     } catch (error) {
-      toast.error('Storyboard generation failed')
+      console.error('[v0] Storyboard generation error:', error)
+      // Reset to pending state on error
+      const errorFrames: StoryboardFrame[] = analysisResult.storyboardFramePrompts.map(f => ({
+        ...f,
+        status: 'error' as const
+      }))
+      setAnalysisResult({ ...analysisResult, storyboardFramePrompts: errorFrames })
+      toast.error(error instanceof Error ? error.message : 'Storyboard generation failed')
     } finally {
       setGeneratingStoryboard(false)
     }
@@ -407,21 +455,54 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     const frame = analysisResult.storyboardFramePrompts.find(f => f.id === frameId)
     if (!frame) return
 
+    // Set frame to generating state
+    const generatingFrames = analysisResult.storyboardFramePrompts.map(f => 
+      f.id === frameId ? { ...f, status: 'generating' as const } : f
+    )
+    setAnalysisResult({ ...analysisResult, storyboardFramePrompts: generatingFrames })
+
+    // Build context from scene elements
+    let characterLooks = ''
+    let settingDetails = ''
+    if (sceneElements) {
+      characterLooks = sceneElements.characters
+        .map(c => `${c.name}: ${c.description}. ${c.clothing || ''}`)
+        .join('. ')
+      settingDetails = [
+        sceneElements.visualStyle,
+        sceneElements.mood,
+        sceneElements.locations.map(l => l.description).join('. ')
+      ].filter(Boolean).join('. ')
+    }
+
     try {
       const response = await fetch('/api/generate-storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          framePrompts: [frame]
+          framePrompts: [frame],
+          characterLooks,
+          settingDetails
         })
       })
 
-      if (!response.ok) throw new Error('Frame regeneration failed')
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Frame regeneration failed')
+      }
 
-      const { frames } = await response.json()
+      const { frames } = data
       
       const updatedFrames = analysisResult.storyboardFramePrompts.map(f => 
-        f.id === frameId ? { ...f, imageUrl: frames[0]?.imageUrl || f.imageUrl, status: 'done' as const } : f
+        f.id === frameId 
+          ? { 
+              ...f, 
+              imageUrl: frames[0]?.imageUrl || f.imageUrl, 
+              status: frames[0]?.imageUrl ? 'done' as const : 'error' as const,
+              cinematicPrompt: frames[0]?.cinematicPrompt
+            } 
+          : f
       )
 
       setAnalysisResult({
@@ -435,9 +516,18 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
         })
       }
 
-      toast.success('Frame regenerated!')
+      if (frames[0]?.imageUrl) {
+        toast.success('Frame regenerated!')
+      } else {
+        toast.error('Frame generation failed - check API keys')
+      }
     } catch (error) {
-      toast.error('Frame regeneration failed')
+      // Reset to error state
+      const errorFrames = analysisResult.storyboardFramePrompts.map(f => 
+        f.id === frameId ? { ...f, status: 'error' as const } : f
+      )
+      setAnalysisResult({ ...analysisResult, storyboardFramePrompts: errorFrames })
+      toast.error(error instanceof Error ? error.message : 'Frame regeneration failed')
     }
   }
 
@@ -456,12 +546,13 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     }
   }
 
-  const handleAudioGenerated = (audioMood: AudioMood) => {
-    if (!analysisResult) return
-
-    setAnalysisResult({
-      ...analysisResult,
-      audioMood
+const handleAudioGenerated = (audioMood: AudioMood) => {
+  setGeneratedAudioMood(audioMood)
+  if (!analysisResult) return
+  
+  setAnalysisResult({
+  ...analysisResult,
+  audioMood
     })
 
     if (currentSceneId) {
@@ -643,6 +734,30 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                           onSplitScenes={handleSplitScenes}
                         />
 
+                        {/* Auto-Generate Pipeline - One-Click Video Generation */}
+                        {sceneInput.trim().length > 20 && !isAnalyzing && (
+                          <div className="mt-6">
+                            <AutoPipeline
+                              prompt={sceneInput}
+                              enhancedPrompt={analysisResult?.refinedScene}
+                              onEnhance={handleAnalyze}
+                              onExtractElements={handleExtractElements}
+                              onGenerateStoryboard={handleGenerateStoryboard}
+                              onGenerateAudio={async () => {
+                                // This will be handled by AudioStudio auto-generate
+                                toast.info('Audio generation started...')
+                              }}
+                              onGenerateVideo={async () => {
+                                toast.info('Video generation started...')
+                              }}
+                              hasStoryboard={analysisResult?.storyboardFramePrompts?.some(f => f.imageUrl) || false}
+                              hasAudio={Boolean(generatedAudioMood)}
+                              hasVideo={Boolean(generatedVideoUrl)}
+                              isAnalyzed={Boolean(analysisResult)}
+                            />
+                          </div>
+                        )}
+
                         {isAnalyzing && (
                           <motion.div
                             initial={{ opacity: 0, y: 10 }}
@@ -750,6 +865,8 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                             onElementsChange={setSceneElements}
                             onGeneratePreview={handleGenerateConceptPreview}
                             isLoading={isExtractingElements}
+                            enhancedPrompt={analysisResult.refinedScene}
+                            onAutoExtract={handleExtractElements}
                           />
 
                           <div className="flex gap-3 pt-4">

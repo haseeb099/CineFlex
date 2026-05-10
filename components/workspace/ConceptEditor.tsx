@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   User, MapPin, Car, Package, Palette, Film, Sparkles, 
   ChevronDown, ChevronUp, Edit3, RefreshCw, Check, X,
-  Plus, Trash2, Wand2, Eye, Save
+  Plus, Trash2, Wand2, Eye, Save, Loader2, ImageIcon,
+  Zap, Camera
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 interface Character {
   id: string
@@ -86,27 +88,157 @@ interface ConceptEditorProps {
   onElementsChange: (elements: SceneElements) => void
   onGeneratePreview: (type: string, item: Character | Vehicle | Location | Prop) => Promise<string | null>
   isLoading?: boolean
+  enhancedPrompt?: string
+  onAutoExtract?: () => void
+}
+
+// Default color palette when none provided
+const DEFAULT_PALETTE = ['#1a1a2e', '#16213e', '#0f3460', '#e94560', '#533483']
+
+// Color name to hex mapping for common color names
+const COLOR_NAME_TO_HEX: Record<string, string> = {
+  // Neutrals
+  'black': '#000000', 'white': '#ffffff', 'gray': '#808080', 'grey': '#808080',
+  'silver': '#c0c0c0', 'charcoal': '#36454f', 'slate': '#708090',
+  // Reds
+  'red': '#ff0000', 'crimson': '#dc143c', 'maroon': '#800000', 'burgundy': '#800020',
+  'scarlet': '#ff2400', 'ruby': '#e0115f', 'cherry': '#de3163',
+  // Blues
+  'blue': '#0000ff', 'navy': '#000080', 'azure': '#007fff', 'cyan': '#00ffff',
+  'teal': '#008080', 'turquoise': '#40e0d0', 'cobalt': '#0047ab', 'sapphire': '#0f52ba',
+  'midnight': '#191970', 'steel': '#4682b4', 'sky': '#87ceeb', 'indigo': '#4b0082',
+  // Greens
+  'green': '#00ff00', 'emerald': '#50c878', 'olive': '#808000', 'forest': '#228b22',
+  'lime': '#32cd32', 'mint': '#98fb98', 'sage': '#9dc183', 'jade': '#00a86b',
+  // Yellows/Golds
+  'yellow': '#ffff00', 'gold': '#ffd700', 'amber': '#ffbf00', 'mustard': '#ffdb58',
+  'honey': '#eb9605', 'lemon': '#fff44f', 'cream': '#fffdd0', 'beige': '#f5f5dc',
+  // Oranges
+  'orange': '#ffa500', 'coral': '#ff7f50', 'peach': '#ffcba4', 'tangerine': '#ff9966',
+  'rust': '#b7410e', 'copper': '#b87333', 'bronze': '#cd7f32',
+  // Purples
+  'purple': '#800080', 'violet': '#ee82ee', 'lavender': '#e6e6fa', 'plum': '#dda0dd',
+  'magenta': '#ff00ff', 'mauve': '#e0b0ff', 'orchid': '#da70d6', 'amethyst': '#9966cc',
+  // Pinks
+  'pink': '#ffc0cb', 'rose': '#ff007f', 'blush': '#de5d83', 'salmon': '#fa8072',
+  'fuchsia': '#ff00ff', 'hot pink': '#ff69b4',
+  // Browns
+  'brown': '#8b4513', 'chocolate': '#7b3f00', 'coffee': '#6f4e37', 'tan': '#d2b48c',
+  'sienna': '#a0522d', 'sepia': '#704214', 'mahogany': '#c04000', 'chestnut': '#954535',
+  // Cinematic
+  'neon': '#39ff14', 'electric': '#7df9ff', 'warm': '#fd7e14', 'cool': '#17a2b8',
+  'muted': '#6c757d', 'rich': '#722f37', 'deep': '#003366', 'bright': '#ffff00',
+  'dark': '#1a1a1a', 'light': '#f8f9fa', 'vibrant': '#ff4500', 'soft': '#b0c4de',
+  'earthy': '#8b7355', 'moody': '#3d3d3d', 'desaturated': '#696969', 'saturated': '#ff0080',
+}
+
+function parseColorToHex(color: string): string {
+  if (!color) return '#808080'
+  
+  // If already a hex color
+  if (color.startsWith('#')) {
+    return color.length === 4 
+      ? `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`
+      : color
+  }
+  
+  // If rgb/rgba format
+  if (color.startsWith('rgb')) {
+    const matches = color.match(/\d+/g)
+    if (matches && matches.length >= 3) {
+      const [r, g, b] = matches.map(Number)
+      return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+    }
+  }
+  
+  // Try to find in color name mapping
+  const normalizedColor = color.toLowerCase().trim()
+  
+  // Direct match
+  if (COLOR_NAME_TO_HEX[normalizedColor]) {
+    return COLOR_NAME_TO_HEX[normalizedColor]
+  }
+  
+  // Check for partial matches (e.g., "deep blue" -> "blue")
+  for (const [name, hex] of Object.entries(COLOR_NAME_TO_HEX)) {
+    if (normalizedColor.includes(name) || name.includes(normalizedColor)) {
+      return hex
+    }
+  }
+  
+  // Generate a hash-based color for unknown names
+  let hash = 0
+  for (let i = 0; i < color.length; i++) {
+    hash = color.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = Math.abs(hash) % 360
+  return `hsl(${hue}, 60%, 50%)`
 }
 
 export function ConceptEditor({ 
   elements, 
   onElementsChange, 
   onGeneratePreview,
-  isLoading 
+  isLoading,
+  enhancedPrompt,
+  onAutoExtract
 }: ConceptEditorProps) {
   const [activeTab, setActiveTab] = useState('characters')
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
   const [editingItem, setEditingItem] = useState<string | null>(null)
   const [generatingPreview, setGeneratingPreview] = useState<string | null>(null)
+  const [isGeneratingAll, setIsGeneratingAll] = useState(false)
 
+  // Auto-extract elements on mount if not already loaded
+  useEffect(() => {
+    if (!elements && !isLoading && enhancedPrompt && onAutoExtract) {
+      onAutoExtract()
+    }
+  }, [elements, isLoading, enhancedPrompt, onAutoExtract])
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <Card className="bg-[#111118] border-white/10">
+        <CardContent className="p-8">
+          <div className="flex flex-col items-center justify-center space-y-4">
+            <div className="relative">
+              <Loader2 className="w-12 h-12 text-[#a855f7] animate-spin" />
+              <Sparkles className="w-6 h-6 text-[#f59e0b] absolute -top-1 -right-1 animate-pulse" />
+            </div>
+            <div className="text-center">
+              <p className="text-white font-medium">Extracting Scene Elements...</p>
+              <p className="text-sm text-[#52526b] mt-1">AI is analyzing characters, locations, and props</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Empty state with auto-extract button
   if (!elements) {
     return (
       <Card className="bg-[#111118] border-white/10">
         <CardContent className="p-8 text-center">
-          <Sparkles className="w-12 h-12 mx-auto mb-4 text-[#52526b]" />
-          <p className="text-[#a1a1bc]">
-            No scene elements extracted yet. Enhance your prompt first to extract characters, locations, and props.
-          </p>
+          <div className="flex flex-col items-center space-y-4">
+            <div className="w-16 h-16 rounded-full bg-[#a855f7]/20 flex items-center justify-center">
+              <Sparkles className="w-8 h-8 text-[#a855f7]" />
+            </div>
+            <div>
+              <p className="text-white font-medium">Ready to Extract Scene Elements</p>
+              <p className="text-sm text-[#52526b] mt-1">
+                AI will analyze your prompt to identify characters, locations, vehicles, and props
+              </p>
+            </div>
+            <Button
+              onClick={onAutoExtract}
+              className="gap-2 bg-[#a855f7] hover:bg-[#9333ea] text-white"
+            >
+              <Wand2 className="w-4 h-4" />
+              Extract Elements with AI
+            </Button>
+          </div>
         </CardContent>
       </Card>
     )
@@ -127,7 +259,6 @@ export function ConceptEditor({
     try {
       const imageUrl = await onGeneratePreview(type, item)
       if (imageUrl) {
-        // Update the item with the preview image
         const updatedElements = { ...elements }
         if (type === 'character') {
           const idx = updatedElements.characters.findIndex(c => c.id === item.id)
@@ -144,12 +275,45 @@ export function ConceptEditor({
         }
         onElementsChange(updatedElements)
         toast.success('Preview generated!')
+      } else {
+        toast.error('Failed to generate preview')
       }
     } catch {
       toast.error('Failed to generate preview')
     } finally {
       setGeneratingPreview(null)
     }
+  }
+
+  // Generate all previews for current tab
+  const handleGenerateAllPreviews = async () => {
+    setIsGeneratingAll(true)
+    let items: Array<{ type: string; item: Character | Vehicle | Location | Prop }> = []
+    
+    if (activeTab === 'characters') {
+      items = elements.characters.filter(c => !c.previewImage).map(c => ({ type: 'character', item: c }))
+    } else if (activeTab === 'locations') {
+      items = elements.locations.filter(l => !l.previewImage).map(l => ({ type: 'location', item: l }))
+    } else if (activeTab === 'vehicles') {
+      items = elements.vehicles.filter(v => !v.previewImage).map(v => ({ type: 'vehicle', item: v }))
+    } else if (activeTab === 'props') {
+      items = elements.props.filter(p => !p.previewImage).map(p => ({ type: 'prop', item: p }))
+    }
+
+    if (items.length === 0) {
+      toast.info('All items already have previews')
+      setIsGeneratingAll(false)
+      return
+    }
+
+    toast.info(`Generating ${items.length} previews...`)
+
+    for (const { type, item } of items) {
+      await handleGeneratePreview(type, item)
+    }
+
+    setIsGeneratingAll(false)
+    toast.success('All previews generated!')
   }
 
   const updateCharacter = (id: string, updates: Partial<Character>) => {
@@ -175,6 +339,15 @@ export function ConceptEditor({
     const idx = updatedElements.locations.findIndex(l => l.id === id)
     if (idx >= 0) {
       updatedElements.locations[idx] = { ...updatedElements.locations[idx], ...updates }
+      onElementsChange(updatedElements)
+    }
+  }
+
+  const updateProp = (id: string, updates: Partial<Prop>) => {
+    const updatedElements = { ...elements }
+    const idx = updatedElements.props.findIndex(p => p.id === id)
+    if (idx >= 0) {
+      updatedElements.props[idx] = { ...updatedElements.props[idx], ...updates }
       onElementsChange(updatedElements)
     }
   }
@@ -223,6 +396,20 @@ export function ConceptEditor({
     setEditingItem(newVeh.id)
   }
 
+  const addProp = () => {
+    const newProp: Prop = {
+      id: `prop_${Date.now()}`,
+      name: 'New Prop',
+      description: ''
+    }
+    onElementsChange({
+      ...elements,
+      props: [...elements.props, newProp]
+    })
+    setExpandedItems(new Set([...expandedItems, newProp.id]))
+    setEditingItem(newProp.id)
+  }
+
   const deleteItem = (type: string, id: string) => {
     const updatedElements = { ...elements }
     if (type === 'character') {
@@ -245,6 +432,11 @@ export function ConceptEditor({
     background: 'bg-[#52526b]/20 text-[#a1a1bc] border-[#52526b]/30'
   }
 
+  // Get display colors from palette
+  const displayColors = (elements.colorPalette && elements.colorPalette.length > 0)
+    ? elements.colorPalette.map(c => parseColorToHex(c))
+    : DEFAULT_PALETTE
+
   return (
     <Card className="bg-[#111118] border-white/10">
       <CardHeader className="pb-4">
@@ -254,12 +446,16 @@ export function ConceptEditor({
             Visual Concept Editor
           </CardTitle>
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="border-[#c084fc]/30 text-[#c084fc]">
-              {elements.genre}
-            </Badge>
-            <Badge variant="outline" className="border-[#f59e0b]/30 text-[#f59e0b]">
-              {elements.mood}
-            </Badge>
+            {elements.genre && (
+              <Badge variant="outline" className="border-[#c084fc]/30 text-[#c084fc]">
+                {elements.genre}
+              </Badge>
+            )}
+            {elements.mood && (
+              <Badge variant="outline" className="border-[#f59e0b]/30 text-[#f59e0b]">
+                {elements.mood}
+              </Badge>
+            )}
           </div>
         </div>
         <p className="text-sm text-[#52526b] mt-1">
@@ -268,24 +464,40 @@ export function ConceptEditor({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Color Palette Preview */}
+        {/* Color Palette Preview - Fixed to show actual colors */}
         <div className="flex items-center gap-3 p-3 rounded-lg bg-black/30 border border-white/5">
           <Palette className="w-4 h-4 text-[#a1a1bc]" />
           <span className="text-sm text-[#a1a1bc]">Color Palette:</span>
-          <div className="flex gap-1">
-            {elements.colorPalette?.slice(0, 6).map((color, idx) => (
+          <div className="flex gap-2">
+            {displayColors.slice(0, 6).map((color, idx) => (
               <div
                 key={idx}
-                className="w-6 h-6 rounded-full border border-white/20"
-                style={{ backgroundColor: color.toLowerCase().includes('#') ? color : `var(--${color})` }}
-                title={color}
-              />
+                className="w-8 h-8 rounded-lg border-2 border-white/20 shadow-lg relative group cursor-pointer hover:scale-110 transition-transform"
+                style={{ backgroundColor: color }}
+                title={elements.colorPalette?.[idx] || color}
+              >
+                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 px-1.5 py-0.5 rounded text-[9px] text-white whitespace-nowrap z-10">
+                  {elements.colorPalette?.[idx] || color}
+                </div>
+              </div>
             ))}
           </div>
           <span className="text-xs text-[#52526b] ml-auto">
             {elements.visualStyle}
           </span>
         </div>
+
+        {/* Cinematic References */}
+        {elements.cinematicReferences && elements.cinematicReferences.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-[#52526b]">Style References:</span>
+            {elements.cinematicReferences.map((ref, idx) => (
+              <Badge key={idx} variant="outline" className="border-white/10 text-[#a1a1bc] text-xs">
+                {ref}
+              </Badge>
+            ))}
+          </div>
+        )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="bg-black/30 border border-white/10 p-1">
@@ -309,7 +521,21 @@ export function ConceptEditor({
 
           {/* CHARACTERS TAB */}
           <TabsContent value="characters" className="mt-4 space-y-3">
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+              <Button 
+                size="sm" 
+                onClick={handleGenerateAllPreviews}
+                disabled={isGeneratingAll}
+                variant="outline"
+                className="gap-2 border-[#c084fc]/30 text-[#c084fc] hover:bg-[#c084fc]/10"
+              >
+                {isGeneratingAll ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Zap className="w-4 h-4" />
+                )}
+                Generate All Previews
+              </Button>
               <Button size="sm" onClick={addCharacter} className="gap-2 bg-[#c084fc] hover:bg-[#a855f7] text-black">
                 <Plus className="w-4 h-4" />
                 Add Character
@@ -335,22 +561,37 @@ export function ConceptEditor({
                         <img 
                           src={char.previewImage} 
                           alt={char.name}
-                          className="w-10 h-10 rounded-full object-cover border border-white/20"
+                          className="w-12 h-12 rounded-lg object-cover border border-white/20"
                         />
                       ) : (
-                        <div className="w-10 h-10 rounded-full bg-[#c084fc]/20 flex items-center justify-center">
-                          <User className="w-5 h-5 text-[#c084fc]" />
+                        <div className="w-12 h-12 rounded-lg bg-[#c084fc]/20 flex items-center justify-center">
+                          <User className="w-6 h-6 text-[#c084fc]" />
                         </div>
                       )}
                       <div>
                         <h4 className="text-white font-medium">{char.name}</h4>
-                        <p className="text-xs text-[#52526b]">{char.age} {char.gender} - {char.clothing?.slice(0, 40)}...</p>
+                        <p className="text-xs text-[#52526b] line-clamp-1">
+                          {char.age && `${char.age}, `}{char.gender} - {char.clothing?.slice(0, 40) || char.description?.slice(0, 40)}...
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge className={roleColors[char.role]}>
                         {char.role}
                       </Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); handleGeneratePreview('character', char) }}
+                        disabled={generatingPreview === char.id}
+                        className="h-8 w-8 p-0 text-[#c084fc] hover:bg-[#c084fc]/10"
+                      >
+                        {generatingPreview === char.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Camera className="w-4 h-4" />
+                        )}
+                      </Button>
                       {expandedItems.has(char.id) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </div>
                   </div>
@@ -365,6 +606,17 @@ export function ConceptEditor({
                         className="border-t border-white/10"
                       >
                         <div className="p-4 space-y-4">
+                          {/* Preview Image */}
+                          {char.previewImage && (
+                            <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#0a0a0f]">
+                              <img
+                                src={char.previewImage}
+                                alt={char.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          )}
+
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <div>
                               <Label className="text-xs text-[#52526b]">Name</Label>
@@ -473,11 +725,11 @@ export function ConceptEditor({
                             <Button
                               size="sm"
                               onClick={() => handleGeneratePreview('character', char)}
-                              disabled={generatingPreview === char.id || isLoading}
+                              disabled={generatingPreview === char.id || isGeneratingAll}
                               className="gap-2 bg-[#c084fc] hover:bg-[#a855f7] text-black"
                             >
                               {generatingPreview === char.id ? (
-                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                <Loader2 className="w-4 h-4 animate-spin" />
                               ) : (
                                 <Eye className="w-4 h-4" />
                               )}
@@ -485,12 +737,11 @@ export function ConceptEditor({
                             </Button>
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="ghost"
                               onClick={() => deleteItem('character', char.id)}
-                              className="gap-2 border-red-500/30 text-red-400 hover:bg-red-500/10"
+                              className="text-red-400 hover:bg-red-500/10"
                             >
                               <Trash2 className="w-4 h-4" />
-                              Remove
                             </Button>
                           </div>
                         </div>
@@ -500,11 +751,35 @@ export function ConceptEditor({
                 </motion.div>
               ))}
             </AnimatePresence>
+
+            {(!elements.characters || elements.characters.length === 0) && (
+              <div className="text-center py-8 text-[#52526b]">
+                <User className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No characters extracted</p>
+                <Button size="sm" onClick={addCharacter} variant="ghost" className="mt-2">
+                  <Plus className="w-4 h-4 mr-1" /> Add Character
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
           {/* LOCATIONS TAB */}
           <TabsContent value="locations" className="mt-4 space-y-3">
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+              <Button 
+                size="sm" 
+                onClick={handleGenerateAllPreviews}
+                disabled={isGeneratingAll}
+                variant="outline"
+                className="gap-2 border-[#38bdf8]/30 text-[#38bdf8] hover:bg-[#38bdf8]/10"
+              >
+                {isGeneratingAll ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Zap className="w-4 h-4" />
+                )}
+                Generate All Previews
+              </Button>
               <Button size="sm" onClick={addLocation} className="gap-2 bg-[#38bdf8] hover:bg-[#0ea5e9] text-black">
                 <Plus className="w-4 h-4" />
                 Add Location
@@ -529,22 +804,34 @@ export function ConceptEditor({
                         <img 
                           src={loc.previewImage} 
                           alt={loc.name}
-                          className="w-12 h-8 rounded object-cover border border-white/20"
+                          className="w-12 h-12 rounded-lg object-cover border border-white/20"
                         />
                       ) : (
-                        <div className="w-12 h-8 rounded bg-[#38bdf8]/20 flex items-center justify-center">
-                          <MapPin className="w-4 h-4 text-[#38bdf8]" />
+                        <div className="w-12 h-12 rounded-lg bg-[#38bdf8]/20 flex items-center justify-center">
+                          <MapPin className="w-6 h-6 text-[#38bdf8]" />
                         </div>
                       )}
                       <div>
                         <h4 className="text-white font-medium">{loc.name}</h4>
-                        <p className="text-xs text-[#52526b]">{loc.type} - {loc.timeOfDay} - {loc.weather}</p>
+                        <p className="text-xs text-[#52526b]">
+                          {loc.type} - {loc.timeOfDay || 'Day'} - {loc.weather || 'Clear'}
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="border-[#38bdf8]/30 text-[#38bdf8]">
-                        {loc.mood}
-                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); handleGeneratePreview('location', loc) }}
+                        disabled={generatingPreview === loc.id}
+                        className="h-8 w-8 p-0 text-[#38bdf8] hover:bg-[#38bdf8]/10"
+                      >
+                        {generatingPreview === loc.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Camera className="w-4 h-4" />
+                        )}
+                      </Button>
                       {expandedItems.has(loc.id) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </div>
                   </div>
@@ -558,6 +845,12 @@ export function ConceptEditor({
                         className="border-t border-white/10"
                       >
                         <div className="p-4 space-y-4">
+                          {loc.previewImage && (
+                            <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#0a0a0f]">
+                              <img src={loc.previewImage} alt={loc.name} className="w-full h-full object-cover" />
+                            </div>
+                          )}
+
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <div>
                               <Label className="text-xs text-[#52526b]">Name</Label>
@@ -585,21 +878,41 @@ export function ConceptEditor({
                             </div>
                             <div>
                               <Label className="text-xs text-[#52526b]">Time of Day</Label>
-                              <Input
-                                value={loc.timeOfDay || ''}
-                                onChange={(e) => updateLocation(loc.id, { timeOfDay: e.target.value })}
-                                className="bg-black/30 border-white/10 text-white mt-1"
-                                placeholder="e.g., Golden hour"
-                              />
+                              <Select 
+                                value={loc.timeOfDay || 'day'} 
+                                onValueChange={(v) => updateLocation(loc.id, { timeOfDay: v })}
+                              >
+                                <SelectTrigger className="bg-black/30 border-white/10 text-white mt-1">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="dawn">Dawn</SelectItem>
+                                  <SelectItem value="morning">Morning</SelectItem>
+                                  <SelectItem value="day">Day</SelectItem>
+                                  <SelectItem value="afternoon">Afternoon</SelectItem>
+                                  <SelectItem value="evening">Evening</SelectItem>
+                                  <SelectItem value="night">Night</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                             <div>
                               <Label className="text-xs text-[#52526b]">Weather</Label>
-                              <Input
-                                value={loc.weather || ''}
-                                onChange={(e) => updateLocation(loc.id, { weather: e.target.value })}
-                                className="bg-black/30 border-white/10 text-white mt-1"
-                                placeholder="e.g., Overcast"
-                              />
+                              <Select 
+                                value={loc.weather || 'clear'} 
+                                onValueChange={(v) => updateLocation(loc.id, { weather: v })}
+                              >
+                                <SelectTrigger className="bg-black/30 border-white/10 text-white mt-1">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="clear">Clear</SelectItem>
+                                  <SelectItem value="cloudy">Cloudy</SelectItem>
+                                  <SelectItem value="rainy">Rainy</SelectItem>
+                                  <SelectItem value="stormy">Stormy</SelectItem>
+                                  <SelectItem value="foggy">Foggy</SelectItem>
+                                  <SelectItem value="snowy">Snowy</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
 
@@ -609,19 +922,19 @@ export function ConceptEditor({
                               value={loc.description}
                               onChange={(e) => updateLocation(loc.id, { description: e.target.value })}
                               className="bg-black/30 border-white/10 text-white mt-1 h-24"
-                              placeholder="Detailed visual description..."
+                              placeholder="Detailed location description..."
                             />
                           </div>
 
-                          <div className="flex gap-2 pt-2">
+                          <div className="flex gap-2">
                             <Button
                               size="sm"
                               onClick={() => handleGeneratePreview('location', loc)}
-                              disabled={generatingPreview === loc.id || isLoading}
+                              disabled={generatingPreview === loc.id}
                               className="gap-2 bg-[#38bdf8] hover:bg-[#0ea5e9] text-black"
                             >
                               {generatingPreview === loc.id ? (
-                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                <Loader2 className="w-4 h-4 animate-spin" />
                               ) : (
                                 <Eye className="w-4 h-4" />
                               )}
@@ -629,12 +942,11 @@ export function ConceptEditor({
                             </Button>
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="ghost"
                               onClick={() => deleteItem('location', loc.id)}
-                              className="gap-2 border-red-500/30 text-red-400 hover:bg-red-500/10"
+                              className="text-red-400 hover:bg-red-500/10"
                             >
                               <Trash2 className="w-4 h-4" />
-                              Remove
                             </Button>
                           </div>
                         </div>
@@ -644,11 +956,35 @@ export function ConceptEditor({
                 </motion.div>
               ))}
             </AnimatePresence>
+
+            {(!elements.locations || elements.locations.length === 0) && (
+              <div className="text-center py-8 text-[#52526b]">
+                <MapPin className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No locations extracted</p>
+                <Button size="sm" onClick={addLocation} variant="ghost" className="mt-2">
+                  <Plus className="w-4 h-4 mr-1" /> Add Location
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
           {/* VEHICLES TAB */}
           <TabsContent value="vehicles" className="mt-4 space-y-3">
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+              <Button 
+                size="sm" 
+                onClick={handleGenerateAllPreviews}
+                disabled={isGeneratingAll}
+                variant="outline"
+                className="gap-2 border-[#f59e0b]/30 text-[#f59e0b] hover:bg-[#f59e0b]/10"
+              >
+                {isGeneratingAll ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Zap className="w-4 h-4" />
+                )}
+                Generate All Previews
+              </Button>
               <Button size="sm" onClick={addVehicle} className="gap-2 bg-[#f59e0b] hover:bg-[#d97706] text-black">
                 <Plus className="w-4 h-4" />
                 Add Vehicle
@@ -673,19 +1009,36 @@ export function ConceptEditor({
                         <img 
                           src={veh.previewImage} 
                           alt={veh.type}
-                          className="w-12 h-8 rounded object-cover border border-white/20"
+                          className="w-12 h-12 rounded-lg object-cover border border-white/20"
                         />
                       ) : (
-                        <div className="w-12 h-8 rounded bg-[#f59e0b]/20 flex items-center justify-center">
-                          <Car className="w-4 h-4 text-[#f59e0b]" />
+                        <div className="w-12 h-12 rounded-lg bg-[#f59e0b]/20 flex items-center justify-center">
+                          <Car className="w-6 h-6 text-[#f59e0b]" />
                         </div>
                       )}
                       <div>
                         <h4 className="text-white font-medium">{veh.make} {veh.model || veh.type}</h4>
-                        <p className="text-xs text-[#52526b]">{veh.color} - {veh.era} - {veh.condition}</p>
+                        <p className="text-xs text-[#52526b]">
+                          {veh.color} {veh.type} - {veh.era || 'Modern'}
+                        </p>
                       </div>
                     </div>
-                    {expandedItems.has(veh.id) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); handleGeneratePreview('vehicle', veh) }}
+                        disabled={generatingPreview === veh.id}
+                        className="h-8 w-8 p-0 text-[#f59e0b] hover:bg-[#f59e0b]/10"
+                      >
+                        {generatingPreview === veh.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Camera className="w-4 h-4" />
+                        )}
+                      </Button>
+                      {expandedItems.has(veh.id) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </div>
                   </div>
 
                   <AnimatePresence>
@@ -697,7 +1050,13 @@ export function ConceptEditor({
                         className="border-t border-white/10"
                       >
                         <div className="p-4 space-y-4">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {veh.previewImage && (
+                            <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#0a0a0f]">
+                              <img src={veh.previewImage} alt={veh.type} className="w-full h-full object-cover" />
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                             <div>
                               <Label className="text-xs text-[#52526b]">Type</Label>
                               <Input
@@ -730,6 +1089,22 @@ export function ConceptEditor({
                                 className="bg-black/30 border-white/10 text-white mt-1"
                               />
                             </div>
+                            <div>
+                              <Label className="text-xs text-[#52526b]">Era</Label>
+                              <Input
+                                value={veh.era || ''}
+                                onChange={(e) => updateVehicle(veh.id, { era: e.target.value })}
+                                className="bg-black/30 border-white/10 text-white mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs text-[#52526b]">Condition</Label>
+                              <Input
+                                value={veh.condition || ''}
+                                onChange={(e) => updateVehicle(veh.id, { condition: e.target.value })}
+                                className="bg-black/30 border-white/10 text-white mt-1"
+                              />
+                            </div>
                           </div>
 
                           <div>
@@ -737,19 +1112,19 @@ export function ConceptEditor({
                             <Textarea
                               value={veh.description}
                               onChange={(e) => updateVehicle(veh.id, { description: e.target.value })}
-                              className="bg-black/30 border-white/10 text-white mt-1 h-24"
+                              className="bg-black/30 border-white/10 text-white mt-1 h-20"
                             />
                           </div>
 
-                          <div className="flex gap-2 pt-2">
+                          <div className="flex gap-2">
                             <Button
                               size="sm"
                               onClick={() => handleGeneratePreview('vehicle', veh)}
-                              disabled={generatingPreview === veh.id || isLoading}
+                              disabled={generatingPreview === veh.id}
                               className="gap-2 bg-[#f59e0b] hover:bg-[#d97706] text-black"
                             >
                               {generatingPreview === veh.id ? (
-                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                <Loader2 className="w-4 h-4 animate-spin" />
                               ) : (
                                 <Eye className="w-4 h-4" />
                               )}
@@ -757,12 +1132,11 @@ export function ConceptEditor({
                             </Button>
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="ghost"
                               onClick={() => deleteItem('vehicle', veh.id)}
-                              className="gap-2 border-red-500/30 text-red-400 hover:bg-red-500/10"
+                              className="text-red-400 hover:bg-red-500/10"
                             >
                               <Trash2 className="w-4 h-4" />
-                              Remove
                             </Button>
                           </div>
                         </div>
@@ -773,57 +1147,174 @@ export function ConceptEditor({
               ))}
             </AnimatePresence>
 
-            {elements.vehicles?.length === 0 && (
+            {(!elements.vehicles || elements.vehicles.length === 0) && (
               <div className="text-center py-8 text-[#52526b]">
-                No vehicles in this scene. Add one if needed.
+                <Car className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No vehicles extracted</p>
+                <Button size="sm" onClick={addVehicle} variant="ghost" className="mt-2">
+                  <Plus className="w-4 h-4 mr-1" /> Add Vehicle
+                </Button>
               </div>
             )}
           </TabsContent>
 
           {/* PROPS TAB */}
           <TabsContent value="props" className="mt-4 space-y-3">
-            {elements.props?.map((prop) => (
-              <div
-                key={prop.id}
-                className="flex items-center justify-between p-3 border border-white/10 rounded-lg bg-black/20"
+            <div className="flex justify-between items-center">
+              <Button 
+                size="sm" 
+                onClick={handleGenerateAllPreviews}
+                disabled={isGeneratingAll}
+                variant="outline"
+                className="gap-2 border-[#4ade80]/30 text-[#4ade80] hover:bg-[#4ade80]/10"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded bg-[#4ade80]/20 flex items-center justify-center">
-                    <Package className="w-5 h-5 text-[#4ade80]" />
-                  </div>
-                  <div>
-                    <h4 className="text-white font-medium">{prop.name}</h4>
-                    <p className="text-xs text-[#52526b]">{prop.description?.slice(0, 60)}...</p>
-                  </div>
-                </div>
-                <Badge variant="outline" className="border-[#4ade80]/30 text-[#4ade80]">
-                  {prop.significance || 'prop'}
-                </Badge>
-              </div>
-            ))}
+                {isGeneratingAll ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Zap className="w-4 h-4" />
+                )}
+                Generate All Previews
+              </Button>
+              <Button size="sm" onClick={addProp} className="gap-2 bg-[#4ade80] hover:bg-[#22c55e] text-black">
+                <Plus className="w-4 h-4" />
+                Add Prop
+              </Button>
+            </div>
 
-            {elements.props?.length === 0 && (
+            <AnimatePresence>
+              {elements.props?.map((prop) => (
+                <motion.div
+                  key={prop.id}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="border border-white/10 rounded-lg overflow-hidden bg-black/20"
+                >
+                  <div 
+                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-white/5"
+                    onClick={() => toggleExpand(prop.id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      {prop.previewImage ? (
+                        <img 
+                          src={prop.previewImage} 
+                          alt={prop.name}
+                          className="w-12 h-12 rounded-lg object-cover border border-white/20"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-[#4ade80]/20 flex items-center justify-center">
+                          <Package className="w-6 h-6 text-[#4ade80]" />
+                        </div>
+                      )}
+                      <div>
+                        <h4 className="text-white font-medium">{prop.name}</h4>
+                        <p className="text-xs text-[#52526b] line-clamp-1">{prop.description}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); handleGeneratePreview('prop', prop) }}
+                        disabled={generatingPreview === prop.id}
+                        className="h-8 w-8 p-0 text-[#4ade80] hover:bg-[#4ade80]/10"
+                      >
+                        {generatingPreview === prop.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Camera className="w-4 h-4" />
+                        )}
+                      </Button>
+                      {expandedItems.has(prop.id) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </div>
+                  </div>
+
+                  <AnimatePresence>
+                    {expandedItems.has(prop.id) && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="border-t border-white/10"
+                      >
+                        <div className="p-4 space-y-4">
+                          {prop.previewImage && (
+                            <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-[#0a0a0f]">
+                              <img src={prop.previewImage} alt={prop.name} className="w-full h-full object-cover" />
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-xs text-[#52526b]">Name</Label>
+                              <Input
+                                value={prop.name}
+                                onChange={(e) => updateProp(prop.id, { name: e.target.value })}
+                                className="bg-black/30 border-white/10 text-white mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs text-[#52526b]">Significance</Label>
+                              <Input
+                                value={prop.significance || ''}
+                                onChange={(e) => updateProp(prop.id, { significance: e.target.value })}
+                                className="bg-black/30 border-white/10 text-white mt-1"
+                                placeholder="Story importance..."
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <Label className="text-xs text-[#52526b]">Description</Label>
+                            <Textarea
+                              value={prop.description}
+                              onChange={(e) => updateProp(prop.id, { description: e.target.value })}
+                              className="bg-black/30 border-white/10 text-white mt-1 h-20"
+                            />
+                          </div>
+
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleGeneratePreview('prop', prop)}
+                              disabled={generatingPreview === prop.id}
+                              className="gap-2 bg-[#4ade80] hover:bg-[#22c55e] text-black"
+                            >
+                              {generatingPreview === prop.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Eye className="w-4 h-4" />
+                              )}
+                              Generate Preview
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => deleteItem('prop', prop.id)}
+                              className="text-red-400 hover:bg-red-500/10"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {(!elements.props || elements.props.length === 0) && (
               <div className="text-center py-8 text-[#52526b]">
-                No significant props identified in this scene.
+                <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No props extracted</p>
+                <Button size="sm" onClick={addProp} variant="ghost" className="mt-2">
+                  <Plus className="w-4 h-4 mr-1" /> Add Prop
+                </Button>
               </div>
             )}
           </TabsContent>
         </Tabs>
-
-        {/* Cinematic References */}
-        {elements.cinematicReferences && elements.cinematicReferences.length > 0 && (
-          <div className="pt-4 border-t border-white/10">
-            <p className="text-xs text-[#52526b] mb-2">Cinematic References:</p>
-            <div className="flex flex-wrap gap-2">
-              {elements.cinematicReferences.map((ref, idx) => (
-                <Badge key={idx} variant="outline" className="border-[#c084fc]/30 text-[#c084fc]">
-                  <Film className="w-3 h-3 mr-1" />
-                  {ref}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   )
