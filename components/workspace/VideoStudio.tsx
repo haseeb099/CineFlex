@@ -258,28 +258,44 @@ export function VideoStudio({
         const firstClipWithVideo = clips?.find((c: { videoUrl?: string }) => c.videoUrl)
         
         if (clips && clips.length > 0) {
-          // Update frames with enhanced images if available
-          const enhancedFrames = clips.map((clip: { videoUrl?: string; sourceImage?: string; frameNumber: number; duration?: number }) => ({
+          // Check if we got actual video URLs (mp4) or images
+          const hasRealVideos = clips.some((c: { videoUrl?: string }) => 
+            c.videoUrl && (c.videoUrl.endsWith('.mp4') || c.videoUrl.includes('video') || data.mode === 'video')
+          )
+          
+          // Update frames with video/enhanced images
+          const enhancedFrames = clips.map((clip: { videoUrl?: string; sourceImage?: string; frameNumber: number; duration?: number; status?: string }) => ({
             ...framesWithImages.find(f => f.frameNumber === clip.frameNumber) || framesWithImages[clip.frameNumber - 1],
             imageUrl: clip.videoUrl || clip.sourceImage,
+            videoUrl: clip.status === 'done' ? clip.videoUrl : null,
             duration: clip.duration || 4,
-            enhanced: true
+            enhanced: true,
+            isVideo: clip.status === 'done' && hasRealVideos
           }))
           
-          // Store enhanced images for better slideshow
+          // Store clips for playback
           setVideoClips(enhancedFrames.map((f, i) => ({
             id: f?.id || `clip-${i}`,
-            type: 'image' as const,
+            type: (f?.isVideo ? 'video' : 'image') as 'video' | 'image',
             startTime: enhancedFrames.slice(0, i).reduce((sum, ef) => sum + (ef?.duration || 4), 0),
             duration: f?.duration || 4,
-            sourceUrl: f?.imageUrl,
+            sourceUrl: f?.videoUrl || f?.imageUrl,
             frame: f
           })))
           
           setGenerationProgress(100)
           setGenerationStep('Complete!')
-          setPreviewMode('slideshow') // Use enhanced slideshow mode
-          toast.success(`Video enhanced! ${data.successCount || clips.length} clips with cinematic effects ready.`)
+          
+          if (hasRealVideos && data.mode === 'video') {
+            // Real AI video generated
+            setPreviewMode('video')
+            setGeneratedVideoUrl(clips[0]?.videoUrl || null)
+            toast.success(`AI Video generated! ${data.successCount || clips.length} video clips ready.`)
+          } else {
+            // Enhanced slideshow mode
+            setPreviewMode('slideshow')
+            toast.success(`Cinematic slideshow ready! ${clips.length} clips with Ken Burns effects.`)
+          }
         } else if (data.mode === 'error') {
           // API configured but generation failed
           setGenerationProgress(100)

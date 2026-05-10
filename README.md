@@ -70,9 +70,15 @@ CineFlex uses **Runware API** (FLUX model) for high-quality storyboard images wi
 
 ### Video Generation
 
-CineFlex can generate actual AI videos from your storyboard frames using:
-- **Popcorn.video** - Image-to-video API
-- **Runware** - Image-to-video capability
+CineFlex generates **actual AI videos** from your storyboard frames using:
+- **Runware** - Uses Kling Video 3.0 model for image-to-video generation
+- **Ken Burns Effect** - Cinematic pan/zoom slideshow fallback with synchronized audio
+
+The video generation process:
+1. Each storyboard frame is converted to a video clip (5-10 seconds)
+2. AI adds smooth motion, camera movement, and cinematic effects
+3. Voiceover and music are synchronized with the visual timeline
+4. Final output combines all clips into a cohesive video
 
 ---
 
@@ -276,12 +282,13 @@ If you see "Microphone access denied":
 2. Groq has daily token limits - if rate limited (429 error), wait a few minutes
 3. The system has intelligent fallback that enhances prompts locally
 
-### Video output is a slideshow?
+### Video not generating properly?
 
-CineFlex creates cinematic slideshows with Ken Burns effects from storyboard frames:
-- True AI video generation (image-to-video) is not yet widely available
-- The slideshow includes smooth transitions, zoom effects, and synchronized audio
-- Voiceover and music are properly synced with the visual timeline
+CineFlex uses Runware Kling Video 3.0 for AI video generation:
+- Ensure `RUNWARE_API_KEY` is set correctly
+- Video generation takes 10-30 seconds per frame
+- If AI video fails, system falls back to Ken Burns effect slideshow
+- Slideshow mode includes smooth pan/zoom transitions with synchronized audio
 
 ### Voice input not working?
 

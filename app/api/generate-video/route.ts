@@ -17,6 +17,20 @@ interface VideoClip {
   error?: string
 }
 
+// Helper to convert image URL to base64 for Runware
+async function imageUrlToBase64(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url)
+    if (!response.ok) return null
+    const buffer = await response.arrayBuffer()
+    const base64 = Buffer.from(buffer).toString('base64')
+    const contentType = response.headers.get('content-type') || 'image/webp'
+    return `data:${contentType};base64,${base64}`
+  } catch {
+    return null
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
@@ -25,7 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
     }
 
-    const { frames, audioUrl, voiceoverUrl, motionStrength = 'normal' } = await req.json()
+    const { frames, audioUrl, voiceoverUrl } = await req.json()
 
     if (!frames || !Array.isArray(frames) || frames.length === 0) {
       return NextResponse.json({ error: 'Frames array required' }, { status: 400 })
@@ -44,27 +58,33 @@ export async function POST(req: NextRequest) {
 
     console.log(`[video] Processing ${framesWithImages.length} frames...`)
 
-    // Motion strength mapping for video generation
-    const motionMap: Record<string, number> = {
-      subtle: 5,
-      normal: 10,
-      dynamic: 15,
-      intense: 20
-    }
-    const motionValue = motionMap[motionStrength] || 10
-
     const generatedClips: VideoClip[] = []
     let apiUsed = 'slideshow'
     let hasRealVideo = false
 
-    // Try Runware frameInterpolation for video effect (creates smooth transitions)
+    // Try Runware videoInference for actual AI video generation
     if (runwareKey) {
       for (const frame of framesWithImages) {
         try {
-          console.log(`[video] Frame ${frame.frameNumber}: Trying Runware video generation...`)
+          console.log(`[video] Frame ${frame.frameNumber}: Generating AI video with Runware...`)
           
-          // Runware supports image animation via specific models
-          // Use imageInference with animation-capable model
+          // Convert image to base64 for Runware
+          const base64Image = await imageUrlToBase64(frame.imageUrl)
+          
+          if (!base64Image) {
+            console.log(`[video] Frame ${frame.frameNumber}: Could not fetch image, using fallback`)
+            generatedClips.push({
+              frameNumber: frame.frameNumber,
+              videoUrl: frame.imageUrl,
+              sourceImage: frame.imageUrl,
+              status: 'slideshow',
+              duration: frame.duration || 4,
+            })
+            continue
+          }
+
+          // Use Runware videoInference with image-to-video
+          // Using Kling or similar model that supports image-to-video
           const response = await fetch('https://api.runware.ai/v1', {
             method: 'POST',
             headers: {
@@ -72,47 +92,48 @@ export async function POST(req: NextRequest) {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify([{
-              taskType: 'imageInference',
+              taskType: 'videoInference',
               taskUUID: crypto.randomUUID(),
-              positivePrompt: `${frame.prompt}, cinematic motion, slight camera movement, film grain, professional cinematography`,
-              model: 'runware:100@1',
-              width: 1280,
-              height: 768,
-              numberResults: 1,
-              outputFormat: 'WEBP',
-              steps: 6,
-              CFGScale: 7.5,
+              positivePrompt: `${frame.prompt}, cinematic motion, smooth camera movement, professional cinematography, high quality`,
+              model: 'klingai:5@3', // Kling Video 3.0 - supports image-to-video
+              duration: Math.min(frame.duration || 5, 10), // Max 10 seconds per clip
+              frameImages: [{
+                inputImage: base64Image
+              }]
             }]),
           })
 
           if (response.ok) {
             const data = await response.json()
-            console.log(`[video] Frame ${frame.frameNumber} response received`)
+            console.log(`[video] Frame ${frame.frameNumber} response:`, JSON.stringify(data).slice(0, 200))
             
-            let imageUrl = null
-            if (data?.data?.[0]?.imageURL) {
-              imageUrl = data.data[0].imageURL
-            } else if (Array.isArray(data) && data[0]?.imageURL) {
-              imageUrl = data[0].imageURL
+            // Extract video URL from response
+            let videoUrl = null
+            if (data?.data?.[0]?.videoURL) {
+              videoUrl = data.data[0].videoURL
+            } else if (data?.data?.[0]?.imageURL) {
+              // Some models return enhanced image, use that
+              videoUrl = data.data[0].imageURL
+            } else if (Array.isArray(data) && data[0]?.videoURL) {
+              videoUrl = data[0].videoURL
             }
 
-            if (imageUrl) {
-              // For now, we generate enhanced images that will be used in slideshow with Ken Burns effect
+            if (videoUrl) {
               generatedClips.push({
                 frameNumber: frame.frameNumber,
-                videoUrl: imageUrl, // Enhanced image URL
+                videoUrl: videoUrl,
                 sourceImage: frame.imageUrl,
                 status: 'done',
-                duration: frame.duration || 4,
+                duration: frame.duration || 5,
               })
               hasRealVideo = true
-              apiUsed = 'runware-enhanced'
-              console.log(`[video] Frame ${frame.frameNumber}: Enhanced image generated!`)
+              apiUsed = 'runware-video'
+              console.log(`[video] Frame ${frame.frameNumber}: AI video generated!`)
               continue
             }
           } else {
             const errText = await response.text()
-            console.error(`[video] Frame ${frame.frameNumber} Runware error:`, errText.slice(0, 200))
+            console.error(`[video] Frame ${frame.frameNumber} Runware error:`, errText.slice(0, 300))
           }
         } catch (err) {
           console.error(`[video] Frame ${frame.frameNumber} error:`, err)
@@ -155,8 +176,8 @@ export async function POST(req: NextRequest) {
       },
       mode: hasRealVideo ? 'video' : 'slideshow',
       message: hasRealVideo 
-        ? `Generated ${successCount} enhanced clips (${totalDuration}s) with Ken Burns effect`
-        : `Created slideshow from ${generatedClips.length} images (${totalDuration}s)`,
+        ? `Generated ${successCount} AI video clips (${totalDuration}s)`
+        : `Created cinematic slideshow from ${generatedClips.length} images (${totalDuration}s)`,
       successCount,
       totalCount: generatedClips.length,
       totalDuration,

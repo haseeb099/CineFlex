@@ -2,29 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sanitizeInput } from '@/lib/utils/sanitize'
 import { checkRateLimit } from '@/lib/utils/rateLimit'
 
-// Simple enhancement without AI - adds cinematic details
+// Rich enhancement without AI - creates detailed cinematic descriptions
 function enhanceWithoutAI(prompt: string): string {
-  const additions = [
-    'The scene opens with dramatic lighting casting long shadows.',
-    'The atmosphere is tense and cinematic.',
-    'Every detail is carefully composed for visual impact.',
-    'The camera captures the moment with precision and artistry.'
-  ]
+  const timeOfDay = ['golden hour, with warm amber light filtering through', 'blue hour, casting everything in cool twilight tones', 'harsh midday sun creating stark contrasts', 'soft overcast light diffusing shadows', 'early morning mist catching the first rays of dawn']
+  const atmosphere = ['The air is thick with anticipation, every sound magnified in the stillness.', 'An undercurrent of tension electrifies the space between moments.', 'There is a dreamlike quality to the scene, as if reality itself holds its breath.', 'The weight of unspoken words hangs heavy in the atmosphere.', 'A sense of inevitability permeates every frame.']
+  const cameraWork = ['The camera glides slowly, revealing details with deliberate precision.', 'Shallow depth of field isolates the subject against a sea of bokeh.', 'A slow push-in heightens the emotional intensity of the moment.', 'The frame is composed with painterly attention to negative space.', 'Subtle camera movement creates an intimate, documentary feel.']
+  const visualDetails = ['Rich textures emerge in the interplay of light and shadow.', 'Colors are desaturated except for key accent elements that draw the eye.', 'The visual palette evokes classic cinema—deep blacks, muted tones, selective warmth.', 'Every surface tells a story of time and use, adding layers of visual history.', 'The lighting sculpts faces and forms with Renaissance precision.']
+  const soundscape = ['The soundscape is sparse—footsteps, breathing, the distant hum of the world.', 'Ambient sound creates a cocoon of immersive reality around the viewer.', 'Silence becomes a character, punctuated only by essential sounds.', 'The audio design emphasizes texture over dialogue, mood over exposition.']
+  const emotionalBeats = ['There is a moment of recognition, fleeting but profound.', 'The scene builds to an emotional crescendo without melodrama.', 'Vulnerability is etched in every gesture, every glance.', 'The characters move through space as if navigating invisible currents of feeling.', 'What remains unsaid carries more weight than any dialogue could.']
+  
+  const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
   
   let enhanced = prompt.trim()
   
-  // Add time of day if not present
-  if (!/(morning|afternoon|evening|night|dawn|dusk|sunset|sunrise)/i.test(enhanced)) {
-    enhanced += ' The scene takes place during golden hour, with warm light filtering through.'
-  }
-  
-  // Add atmosphere
-  if (!/(atmosphere|mood|feeling|tone)/i.test(enhanced)) {
-    enhanced += ' ' + additions[Math.floor(Math.random() * additions.length)]
-  }
-  
-  // Add visual details
-  enhanced += ' The cinematography emphasizes depth and emotion, with careful attention to composition and color grading.'
+  // Build rich paragraphs
+  enhanced += `\n\nThe scene unfolds during ${pick(timeOfDay)}. ${pick(atmosphere)}\n\n`
+  enhanced += `${pick(cameraWork)} ${pick(visualDetails)} The composition draws from the visual language of master cinematographers, each frame worthy of being frozen and studied.\n\n`
+  enhanced += `${pick(soundscape)} ${pick(emotionalBeats)}\n\n`
+  enhanced += `The scene resonates with thematic depth, inviting viewers to find their own meaning in the carefully orchestrated visual poetry. Every element—from the placement of objects to the quality of light—serves the emotional truth of the moment.`
   
   return enhanced
 }
@@ -90,7 +85,7 @@ export async function POST(request: NextRequest) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'llama-3.1-8b-instant',
+          model: 'llama-3.3-70b-versatile',
             messages: [
               { 
                 role: 'system', 
