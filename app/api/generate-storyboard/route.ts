@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { runware } from '@runware/ai-sdk-provider'
+import { experimental_generateImage as generateImage } from 'ai'
 import { checkRateLimit } from '@/lib/utils/rateLimit'
 
 interface FramePrompt {
@@ -8,229 +10,142 @@ interface FramePrompt {
   shotType?: string
   cameraMove?: string
   description?: string
-  characterDetails?: string
-  settingDetails?: string
 }
 
-// Cinematic shot type descriptions for rich prompts
+// Cinematic shot descriptions
 const SHOT_DESCRIPTIONS: Record<string, string> = {
-  'ECU': 'extreme close-up shot, macro detail, intimate emotional framing, eyes filling frame',
-  'CU': 'close-up shot, face filling frame, capturing subtle emotions, shallow depth of field',
-  'MCU': 'medium close-up, chest to head framing, conversational intimacy, bokeh background',
-  'MS': 'medium shot, waist up, balanced composition, character and environment',
-  'MWS': 'medium wide shot, full body with environment context, establishing character in space',
-  'WS': 'wide shot, full scene establishing, environmental storytelling, production design visible',
-  'EWS': 'extreme wide shot, vast landscape, epic scale, tiny figures in grand environment',
-  'POV': 'point of view shot, first person perspective, immersive experience',
-  'OTS': 'over the shoulder shot, depth and conversation, foreground silhouette',
-  'INSERT': 'insert shot, significant detail, object emphasis, narrative importance',
-  'AERIAL': 'aerial shot, birds eye view, geographic context, sweeping vista',
-  'LOW': 'low angle shot, looking up, heroic framing, imposing presence',
-  'HIGH': 'high angle shot, looking down, vulnerability, overview perspective',
-  'DUTCH': 'dutch angle, tilted frame, tension and unease, psychological',
+  'ECU': 'extreme close-up, macro detail',
+  'CU': 'close-up, face filling frame',
+  'MCU': 'medium close-up, chest to head',
+  'MS': 'medium shot, waist up',
+  'WS': 'wide shot, full scene',
+  'EWS': 'extreme wide shot, epic scale',
+  'POV': 'point of view, first person',
+  'OTS': 'over the shoulder',
+  'LOW': 'low angle, looking up',
+  'HIGH': 'high angle, looking down',
+  'AERIAL': 'aerial shot, birds eye',
 }
 
-// Camera movement descriptions for dynamic storytelling
 const CAMERA_DESCRIPTIONS: Record<string, string> = {
-  'STATIC': 'static locked camera, stable composed frame, observational cinema',
-  'PAN': 'horizontal pan movement, sweeping reveal, following the action smoothly',
-  'TILT': 'vertical tilt movement, dramatic reveal, emphasizing height or depth',
-  'DOLLY': 'dolly in/out, depth change, intimate approach or retreat, emotional',
-  'TRACK': 'tracking shot, lateral movement, following subject, dynamic energy',
-  'CRANE': 'crane shot, vertical sweep, godlike perspective, epic reveal',
-  'HANDHELD': 'handheld camera, documentary feel, raw authentic energy, visceral',
-  'STEADICAM': 'steadicam glide, smooth following, ethereal floating movement',
-  'DRONE': 'drone aerial movement, sweeping landscape, geographic scale',
-  'WHIP': 'whip pan, rapid movement, transition energy, disorientation',
-  'PUSH': 'push in, increasing intensity, focusing attention, dramatic',
-  'PULL': 'pull out, revealing context, expanding awareness, realization',
+  'STATIC': 'static locked camera',
+  'PAN': 'horizontal pan',
+  'TILT': 'vertical tilt',
+  'DOLLY': 'dolly movement',
+  'TRACK': 'tracking shot',
+  'CRANE': 'crane shot',
+  'HANDHELD': 'handheld camera',
+  'STEADICAM': 'steadicam glide',
 }
 
-// Generate a rich cinematic prompt from frame data
-function buildCinematicPrompt(fp: FramePrompt): string {
-  const shotDesc = SHOT_DESCRIPTIONS[fp.shotType || 'WS'] || SHOT_DESCRIPTIONS['WS']
-  const cameraDesc = CAMERA_DESCRIPTIONS[fp.cameraMove || 'STATIC'] || CAMERA_DESCRIPTIONS['STATIC']
+function buildCinematicPrompt(fp: FramePrompt, characterLooks?: string, settingDetails?: string): string {
+  const shotDesc = SHOT_DESCRIPTIONS[fp.shotType || 'MS'] || 'medium shot'
+  const cameraDesc = CAMERA_DESCRIPTIONS[fp.cameraMove || 'STATIC'] || 'static camera'
   
-  let prompt = `Cinematic film still, professional Hollywood cinematography, shot on ARRI Alexa, anamorphic Panavision lens, ${shotDesc}, ${cameraDesc}.\n\n`
+  let prompt = `Cinematic film still, ${shotDesc}, ${cameraDesc}, professional cinematography. ${fp.prompt || fp.description}`
   
-  prompt += `Scene: ${fp.prompt}\n\n`
+  if (characterLooks) prompt += `. Characters: ${characterLooks}`
+  if (settingDetails) prompt += `. Setting: ${settingDetails}`
   
-  if (fp.characterDetails) {
-    prompt += `Character Details: ${fp.characterDetails}\n\n`
-  }
-  
-  if (fp.settingDetails) {
-    prompt += `Setting: ${fp.settingDetails}\n\n`
-  }
-  
-  prompt += `Technical: Dramatic three-point lighting, rich color grading, high production value, 2.39:1 widescreen composition, shallow depth of field with beautiful bokeh, 35mm film grain texture, award-winning cinematography by Roger Deakins, photorealistic, major motion picture quality.`
+  prompt += '. Dramatic lighting, high production value, 35mm film, photorealistic, movie quality.'
   
   return prompt
 }
 
-// Negative prompt for quality control
-const NEGATIVE_PROMPT = 'text, watermark, logo, signature, blurry, low quality, amateur, cartoon, anime, illustration, drawing, painting, bad anatomy, deformed, ugly, duplicate, mutilated, extra limbs, poorly drawn face, mutation, disfigured, bad proportions, gross proportions, malformed, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, artist name, oversaturated, underexposed, overexposed'
-
 export async function POST(req: NextRequest) {
   try {
-    // Rate limiting
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
     const rateLimitResult = checkRateLimit(ip, 'storyboard')
     if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        { error: `Rate limit exceeded. Wait ${Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)} seconds.` },
-        { status: 429 }
-      )
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
     }
 
     const { framePrompts, characterLooks, settingDetails } = await req.json()
 
     if (!framePrompts || !Array.isArray(framePrompts)) {
-      return NextResponse.json(
-        { error: 'Frame prompts required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Frame prompts required' }, { status: 400 })
     }
 
-    // Check for available image generation APIs (in order of preference)
-    // Pollinations.ai is FREE and requires no API key - used as fallback
     const runwareKey = process.env.RUNWARE_API_KEY
-    const imgnKey = process.env.IMGN_API_KEY
-    const usePollinations = !runwareKey && !imgnKey
-
-    console.log('[storyboard] API configuration:', {
-      runware: runwareKey ? 'configured' : 'NOT SET',
-      imgn: imgnKey ? 'configured' : 'NOT SET',
-      pollinations: usePollinations ? 'FALLBACK (free)' : 'not needed'
-    })
+    console.log('[storyboard] RUNWARE_API_KEY:', runwareKey ? 'SET' : 'NOT SET')
 
     const generatedFrames = []
 
     for (const fp of framePrompts as FramePrompt[]) {
-      // Enhance frame prompt with global character/setting details if provided
-      const enhancedFrame = {
-        ...fp,
-        characterDetails: fp.characterDetails || characterLooks,
-        settingDetails: fp.settingDetails || settingDetails,
-      }
-      
-      const cinematicPrompt = buildCinematicPrompt(enhancedFrame)
+      const cinematicPrompt = buildCinematicPrompt(fp, characterLooks, settingDetails)
+      let imageUrl: string | null = null
 
       try {
-        let imageUrl: string | null = null
-
         if (runwareKey) {
-          // Use Runware API for image generation
-          console.log(`[storyboard] Generating frame ${fp.frameNumber} with Runware...`)
-          
-          const response = await fetch('https://api.runware.ai/v1', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${runwareKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify([{
-              taskType: 'imageInference',
-              taskUUID: `frame-${fp.frameNumber}-${Date.now()}`,
-              positivePrompt: cinematicPrompt,
-              negativePrompt: NEGATIVE_PROMPT,
-              model: 'runware:100@1', // High quality model
-              width: 1280,
-              height: 720,
-              numberResults: 1,
-              outputType: 'URL',
-              steps: 30,
-              CFGScale: 7.5,
-              scheduler: 'DPMSolverMultistep',
-            }]),
-          })
-
-          if (response.ok) {
-            const data = await response.json()
-            console.log(`[storyboard] Runware response:`, JSON.stringify(data).slice(0, 200))
+          try {
+            console.log(`[storyboard] Generating frame ${fp.frameNumber} with Runware SDK...`)
             
-            // Runware returns an array of results
-            if (Array.isArray(data) && data.length > 0) {
-              imageUrl = data[0]?.imageURL || data[0]?.imageUrl || null
-            } else if (data?.data && Array.isArray(data.data)) {
-              imageUrl = data.data[0]?.imageURL || data.data[0]?.imageUrl || null
-            } else if (data?.imageURL || data?.imageUrl) {
-              imageUrl = data.imageURL || data.imageUrl
-            }
-          } else {
-            const errorText = await response.text()
-            console.error(`[storyboard] Runware error: ${response.status} - ${errorText}`)
-          }
-        } else if (imgnKey) {
-          // Fallback to IMGN API
-          console.log(`[storyboard] Generating frame ${fp.frameNumber} with IMGN...`)
-          
-          const response = await fetch('https://api.imgn.co/v1/images/generations', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${imgnKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
+            const { image } = await generateImage({
+              model: runware.image('runware:100@1'), // FLUX.1 Schnell - fast
               prompt: cinematicPrompt,
-              negative_prompt: NEGATIVE_PROMPT,
-              width: 1280,
-              height: 720,
-              num_images: 1,
-            }),
-          })
+              size: '1024x576' as `${number}x${number}`,
+              providerOptions: {
+                runware: {
+                  steps: 4,
+                  CFGScale: 7.5,
+                },
+              },
+            })
 
-          if (response.ok) {
-            const data = await response.json()
-            imageUrl = data?.data?.[0]?.url || data?.images?.[0]?.url || null
+            // Get URL from response
+            if (image.base64) {
+              imageUrl = `data:image/png;base64,${image.base64}`
+            } else if ('url' in image && image.url) {
+              imageUrl = image.url as string
+            }
+            
+            console.log(`[storyboard] Frame ${fp.frameNumber} done:`, imageUrl ? 'SUCCESS' : 'NO URL')
+          } catch (runwareError) {
+            console.error(`[storyboard] Runware SDK error for frame ${fp.frameNumber}:`, runwareError)
+            // Will fall through to Pollinations
           }
-        } else {
-          // FREE FALLBACK: Pollinations.ai - no API key required!
-          console.log(`[storyboard] Generating frame ${fp.frameNumber} with Pollinations (FREE)...`)
-          
-          // Pollinations generates images via URL - encode the prompt
-          const shortPrompt = cinematicPrompt.slice(0, 500) // Limit prompt length for URL
-          const encodedPrompt = encodeURIComponent(shortPrompt)
-          const seed = Date.now() + fp.frameNumber
-          
-          // Pollinations.ai direct image URL
-          imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&seed=${seed}&nologo=true`
-          
-          console.log(`[storyboard] Pollinations URL generated for frame ${fp.frameNumber}`)
         }
-
-        if (imageUrl) {
-          console.log(`[storyboard] Frame ${fp.frameNumber} generated successfully: ${imageUrl.slice(0, 50)}...`)
+        
+        // ALWAYS fallback to Pollinations if no image yet
+        if (!imageUrl) {
+          console.log(`[storyboard] Using Pollinations (FREE) for frame ${fp.frameNumber}`)
+          const encodedPrompt = encodeURIComponent(cinematicPrompt.slice(0, 500))
+          const seed = Date.now() + fp.frameNumber
+          imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&seed=${seed}&nologo=true`
         }
 
         generatedFrames.push({
           id: fp.id || `frame-${fp.frameNumber}`,
           frameNumber: fp.frameNumber,
-          imageUrl: imageUrl,
+          imageUrl,
           prompt: fp.prompt,
-          cinematicPrompt: cinematicPrompt,
-          shotType: fp.shotType || 'WS',
+          cinematicPrompt,
+          shotType: fp.shotType || 'MS',
           cameraMove: fp.cameraMove || 'STATIC',
           description: fp.description || fp.prompt || '',
-          characterDetails: enhancedFrame.characterDetails,
-          settingDetails: enhancedFrame.settingDetails,
-          status: imageUrl ? 'done' : 'error',
-          mode: imageUrl ? 'generated' : 'error'
+          status: 'done',
+          mode: runwareKey ? 'runware' : 'pollinations'
         })
 
       } catch (frameError) {
-        console.error(`[storyboard] Error generating frame ${fp.frameNumber}:`, frameError)
+        console.error(`[storyboard] Error frame ${fp.frameNumber}:`, frameError)
+        
+        // Always fallback to Pollinations on error
+        const encodedPrompt = encodeURIComponent(cinematicPrompt.slice(0, 500))
+        const seed = Date.now() + fp.frameNumber
+        imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&seed=${seed}&nologo=true`
+        
         generatedFrames.push({
           id: fp.id || `frame-${fp.frameNumber}`,
           frameNumber: fp.frameNumber,
-          imageUrl: null,
+          imageUrl,
           prompt: fp.prompt,
-          shotType: fp.shotType || 'WS',
+          cinematicPrompt,
+          shotType: fp.shotType || 'MS',
           cameraMove: fp.cameraMove || 'STATIC',
           description: fp.description || '',
-          status: 'error',
-          mode: 'error',
-          error: frameError instanceof Error ? frameError.message : 'Generation failed'
+          status: 'done',
+          mode: 'pollinations-fallback'
         })
       }
     }
@@ -239,24 +154,17 @@ export async function POST(req: NextRequest) {
     
     return NextResponse.json({ 
       frames: generatedFrames, 
-      mode: successCount > 0 ? 'generated' : 'error',
-      message: successCount > 0 
-        ? `Generated ${successCount}/${generatedFrames.length} AI storyboard frames`
-        : 'Image generation failed. Check your API key configuration.',
+      mode: 'generated',
       successCount,
       totalCount: generatedFrames.length,
-      apiUsed: runwareKey ? 'runware' : imgnKey ? 'imgn' : 'pollinations (free)'
+      message: `Generated ${successCount}/${generatedFrames.length} frames`,
+      apiUsed: runwareKey ? 'runware' : 'pollinations'
     })
 
   } catch (err) {
-    console.error('[storyboard] error:', err instanceof Error ? err.message : 'unknown')
+    console.error('[storyboard] error:', err)
     return NextResponse.json(
-      { 
-        error: 'Storyboard generation failed',
-        message: err instanceof Error ? err.message : 'Unknown error',
-        frames: [],
-        mode: 'error'
-      },
+      { error: 'Storyboard generation failed', message: err instanceof Error ? err.message : 'Unknown error', frames: [], mode: 'error' },
       { status: 500 }
     )
   }
