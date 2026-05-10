@@ -87,7 +87,7 @@ export function AnalysisPanel({
           className="space-y-3"
         >
           <h3 className="text-xs font-mono uppercase tracking-wider text-[#52526b]">Gap Report</h3>
-          <div className="flex flex-wrap gap-2">
+          <div className="space-y-2">
             {gaps.map((gap, i) => {
               const config = SEVERITY_CONFIG[gap.severity]
               const Icon = config.icon
@@ -95,16 +95,16 @@ export function AnalysisPanel({
                 <div
                   key={gap.id || i}
                   className={cn(
-                    'flex items-center gap-2 px-3 py-2 rounded-lg border',
+                    'flex items-start gap-3 px-4 py-3 rounded-lg border',
                     config.bg, config.border
                   )}
                 >
-                  <Icon className={cn('w-4 h-4', config.text)} />
-                  <div>
-                    <span className={cn('text-xs font-mono uppercase', config.text)}>
+                  <Icon className={cn('w-4 h-4 mt-0.5 flex-shrink-0', config.text)} />
+                  <div className="flex-1 min-w-0">
+                    <span className={cn('text-xs font-mono uppercase block', config.text)}>
                       {gap.type}
                     </span>
-                    <p className="text-xs text-[#a1a1bc] max-w-[250px] truncate">
+                    <p className="text-xs text-[#a1a1bc] leading-relaxed break-words">
                       {gap.description}
                     </p>
                   </div>
