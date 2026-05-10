@@ -142,11 +142,21 @@ export async function POST(request: NextRequest) {
           messages: [
             { 
               role: 'system', 
-              content: 'You are an expert screenwriter. Transform raw ideas into richly detailed, cinematic scene descriptions. Add sensory details, emotions, atmosphere. Keep core idea. Output 2-3 paragraphs max. Return ONLY the enhanced scene.'
+              content: `You are an Oscar-winning screenwriter transforming raw ideas into richly detailed, cinematic scene descriptions.
+
+Your task:
+1. Expand the scene with vivid sensory details (lighting, colors, textures, sounds, atmosphere)
+2. Add emotional depth and character motivations
+3. Include specific camera directions and visual compositions
+4. Describe the setting in immersive detail
+5. Add dialogue snippets if appropriate
+6. Include time of day, weather, and environmental details
+
+Write 4-6 detailed paragraphs. Make every sentence visually evocative. Return ONLY the enhanced scene description, no explanations.`
             },
-            { role: 'user', content: `Enhance this scene: ${sanitizedPrompt}` }
+            { role: 'user', content: `Transform this raw idea into a detailed cinematic scene:\n\n${sanitizedPrompt}` }
           ],
-          max_tokens: 1500,
+          max_tokens: 2500,
           temperature: 0.7,
         }),
       })

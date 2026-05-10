@@ -257,14 +257,29 @@ export function VideoStudio({
         const clips = data.clips || data.videos
         const firstClipWithVideo = clips?.find((c: { videoUrl?: string }) => c.videoUrl)
         
-        if (firstClipWithVideo?.videoUrl) {
-          setGeneratedVideoUrl(firstClipWithVideo.videoUrl)
-          setPreviewMode('video')
-          onVideoGenerated?.(firstClipWithVideo.videoUrl)
+        if (clips && clips.length > 0) {
+          // Update frames with enhanced images if available
+          const enhancedFrames = clips.map((clip: { videoUrl?: string; sourceImage?: string; frameNumber: number; duration?: number }) => ({
+            ...framesWithImages.find(f => f.frameNumber === clip.frameNumber) || framesWithImages[clip.frameNumber - 1],
+            imageUrl: clip.videoUrl || clip.sourceImage,
+            duration: clip.duration || 4,
+            enhanced: true
+          }))
+          
+          // Store enhanced images for better slideshow
+          setVideoClips(enhancedFrames.map((f, i) => ({
+            id: f?.id || `clip-${i}`,
+            type: 'image' as const,
+            startTime: enhancedFrames.slice(0, i).reduce((sum, ef) => sum + (ef?.duration || 4), 0),
+            duration: f?.duration || 4,
+            sourceUrl: f?.imageUrl,
+            frame: f
+          })))
           
           setGenerationProgress(100)
           setGenerationStep('Complete!')
-          toast.success(data.mode === 'demo' ? 'Demo video ready!' : `Video generated! ${data.successCount || 1} clips created.`)
+          setPreviewMode('slideshow') // Use enhanced slideshow mode
+          toast.success(`Video enhanced! ${data.successCount || clips.length} clips with cinematic effects ready.`)
         } else if (data.mode === 'error') {
           // API configured but generation failed
           setGenerationProgress(100)
@@ -347,18 +362,34 @@ export function VideoStudio({
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentFrameIndex}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.5 }}
-                className="absolute inset-0"
+                initial={{ opacity: 0, scale: 1.1 }}
+                animate={{ 
+                  opacity: 1, 
+                  scale: 1,
+                  x: currentFrameIndex % 2 === 0 ? [0, -20, 0] : [0, 20, 0],
+                  y: currentFrameIndex % 3 === 0 ? [0, -10, 0] : [0, 10, 0]
+                }}
+                exit={{ opacity: 0, scale: 1.05 }}
+                transition={{ 
+                  opacity: { duration: 0.8 },
+                  scale: { duration: framesWithImages[currentFrameIndex]?.duration || 3, ease: "easeOut" },
+                  x: { duration: framesWithImages[currentFrameIndex]?.duration || 3, ease: "linear" },
+                  y: { duration: framesWithImages[currentFrameIndex]?.duration || 3, ease: "linear" }
+                }}
+                className="absolute inset-0 overflow-hidden"
               >
                 {framesWithImages[currentFrameIndex]?.imageUrl && (
-                  <img
+                  <motion.img
                     src={framesWithImages[currentFrameIndex].imageUrl}
                     alt={`Frame ${currentFrameIndex + 1}`}
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-cover"
                     crossOrigin="anonymous"
+                    initial={{ scale: 1 }}
+                    animate={{ scale: 1.15 }}
+                    transition={{ 
+                      duration: framesWithImages[currentFrameIndex]?.duration || 3,
+                      ease: "linear"
+                    }}
                   />
                 )}
               </motion.div>
