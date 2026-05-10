@@ -265,51 +265,28 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     type: string, 
     item: { description: string; [key: string]: unknown }
   ): Promise<string | null> => {
-    try {
-      let prompt = ''
-      
-      if (type === 'character') {
-        const char = item as { name?: string; description: string; clothing?: string; hairStyle?: string; hairColor?: string }
-        prompt = `Professional character portrait, cinematic lighting, film still: ${char.description}. ${char.clothing || ''}. Hair: ${char.hairStyle || ''} ${char.hairColor || ''}. Photorealistic, high detail, movie quality.`
-      } else if (type === 'vehicle') {
-        const veh = item as { type?: string; description: string; color?: string; make?: string; model?: string }
-        prompt = `Cinematic shot of ${veh.make || ''} ${veh.model || ''} ${veh.type || 'vehicle'}, ${veh.color || ''}: ${veh.description}. Professional automotive photography, dramatic lighting, film quality.`
-      } else if (type === 'location') {
-        const loc = item as { name?: string; description: string; timeOfDay?: string; weather?: string; mood?: string }
-        prompt = `Cinematic establishing shot, ${loc.timeOfDay || 'day'}, ${loc.weather || ''}: ${loc.description}. ${loc.mood || ''} atmosphere. Wide angle, professional cinematography, film quality.`
-      } else {
-        prompt = `Cinematic product shot: ${item.description}. Professional lighting, high detail, film quality prop photography.`
-      }
-
-      const response = await fetch('/api/generate-storyboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          framePrompts: [{
-            frameNumber: 1,
-            prompt: prompt,
-            shotType: type === 'character' ? 'MCU' : type === 'location' ? 'WS' : 'MS',
-            cameraMove: 'STATIC'
-          }]
-        })
-      })
-
-      const data = await response.json()
-      
-      // Return image URL if available
-      const imageUrl = data.frames?.[0]?.imageUrl
-      if (imageUrl) {
-        return imageUrl
-      }
-      
-      // Fallback to Pollinations.ai (FREE, no API key needed)
-      const encodedPrompt = encodeURIComponent(prompt.slice(0, 400))
-      return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${Date.now()}&nologo=true`
-    } catch {
-      // Even on error, return a Pollinations URL as fallback
-      const encodedPrompt = encodeURIComponent(prompt.slice(0, 300))
-      return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${Date.now()}&nologo=true`
+    // Build prompt based on type
+    let prompt = ''
+    
+    if (type === 'character') {
+      const char = item as { name?: string; description: string; clothing?: string; hairStyle?: string; hairColor?: string }
+      prompt = `Professional character portrait, cinematic lighting, film still: ${char.description}. ${char.clothing || ''}. Hair: ${char.hairStyle || ''} ${char.hairColor || ''}. Photorealistic, high detail, movie quality.`
+    } else if (type === 'vehicle') {
+      const veh = item as { type?: string; description: string; color?: string; make?: string; model?: string }
+      prompt = `Cinematic shot of ${veh.make || ''} ${veh.model || ''} ${veh.type || 'vehicle'}, ${veh.color || ''}: ${veh.description}. Professional automotive photography, dramatic lighting, film quality.`
+    } else if (type === 'location') {
+      const loc = item as { name?: string; description: string; timeOfDay?: string; weather?: string; mood?: string }
+      prompt = `Cinematic establishing shot, ${loc.timeOfDay || 'day'}, ${loc.weather || ''}: ${loc.description}. ${loc.mood || ''} atmosphere. Wide angle, professional cinematography, film quality.`
+    } else {
+      prompt = `Cinematic product shot: ${item.description}. Professional lighting, high detail, film quality prop photography.`
     }
+
+    // Generate directly via Pollinations.ai - FREE, no API needed, always works
+    const encodedPrompt = encodeURIComponent(prompt.slice(0, 800))
+    const seed = Math.floor(Math.random() * 1000000)
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&model=flux`
+    
+    return imageUrl
   }
 
   const handleAnalyze = async () => {
