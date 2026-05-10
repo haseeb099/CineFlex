@@ -264,25 +264,25 @@ export function CinematicPackage({
         )}
       </div>
 
-      {/* Style Memory */}
-      {analysis?.styleMemory && (
+      {/* Style Memory - uses styleMemoryUpdate from analysis */}
+      {analysis?.styleMemoryUpdate && Object.keys(analysis.styleMemoryUpdate).length > 0 && (
         <Card className="glass-panel border-accent-purple/30">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Style Memory Updated</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {analysis.styleMemory.visualMotifs.map((motif, idx) => (
+              {analysis.styleMemoryUpdate.visualMotifs?.map((motif: string, idx: number) => (
                 <Badge key={idx} className="bg-accent-purple/20 text-accent-purple">
                   {motif}
                 </Badge>
               ))}
-              {analysis.styleMemory.colorPalette.map((color, idx) => (
+              {analysis.styleMemoryUpdate.colorPalette?.map((color: string, idx: number) => (
                 <Badge key={idx} className="bg-accent-cyan/20 text-accent-cyan">
                   {color}
                 </Badge>
               ))}
-              {analysis.styleMemory.soundSignatures.map((sound, idx) => (
+              {analysis.styleMemoryUpdate.soundSignatures?.map((sound: string, idx: number) => (
                 <Badge key={idx} className="bg-accent-amber/20 text-accent-amber">
                   {sound}
                 </Badge>

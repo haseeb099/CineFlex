@@ -30,26 +30,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // If no Runware key, return high-quality placeholder images
+    // If no Runware key, return high-quality placeholder images using Picsum Photos
     if (!process.env.RUNWARE_API_KEY) {
-      // Use Unsplash for higher quality placeholder images with cinematic themes
-      const cinematicCategories = [
-        'film,cinema,movie',
-        'dramatic,lighting,mood',
-        'nature,landscape,dramatic',
-        'urban,city,night',
-        'portrait,dramatic,shadow',
-      ]
-
+      // Generate unique cinematic placeholder images using Picsum Photos
+      // Each frame gets a unique seed based on its content for consistent regeneration
       const placeholders = framePrompts.map((fp: FramePrompt, index: number) => {
-        const category = cinematicCategories[index % cinematicCategories.length]
+        // Create a unique seed based on prompt content for consistent images
+        const seed = `frame-${fp.frameNumber || index + 1}-${(fp.prompt || '').slice(0, 20).replace(/\s/g, '')}`
+        // Picsum provides reliable random images with grayscale option for cinematic feel
+        const imageUrl = `https://picsum.photos/seed/${encodeURIComponent(seed)}/1280/720`
+        
         return {
           frameNumber: fp.frameNumber || index + 1,
-          imageUrl: `https://source.unsplash.com/1280x720/?${encodeURIComponent(category)}&sig=${fp.frameNumber || index}-${Date.now()}`,
+          imageUrl,
           prompt: fp.prompt,
           shotType: fp.shotType || 'WS',
           cameraMove: fp.cameraMove || 'STATIC',
-          description: fp.description || '',
+          description: fp.description || fp.prompt || '',
           status: 'done',
           mode: 'placeholder'
         }
@@ -123,10 +120,11 @@ export async function POST(req: NextRequest) {
           const errorText = await response.text()
           console.error(`[storyboard] Runware error for frame ${fp.frameNumber}:`, response.status, errorText)
           
-          // Use Unsplash fallback for this frame
+          // Use Picsum fallback for this frame
+          const fallbackSeed = `fallback-${fp.frameNumber}-${Date.now()}`
           generatedFrames.push({
             frameNumber: fp.frameNumber,
-            imageUrl: `https://source.unsplash.com/1280x720/?cinema,dramatic&sig=${fp.frameNumber}-${Date.now()}`,
+            imageUrl: `https://picsum.photos/seed/${encodeURIComponent(fallbackSeed)}/1280/720`,
             prompt: fp.prompt,
             shotType: fp.shotType || 'WS',
             cameraMove: fp.cameraMove || 'STATIC',
@@ -144,9 +142,10 @@ export async function POST(req: NextRequest) {
           ? data[0].imageURL 
           : data?.imageURL || data?.data?.[0]?.imageURL
 
+        const generatedSeed = `gen-${fp.frameNumber}-${Date.now()}`
         generatedFrames.push({
           frameNumber: fp.frameNumber,
-          imageUrl: imageUrl || `https://source.unsplash.com/1280x720/?film&sig=${fp.frameNumber}-${Date.now()}`,
+          imageUrl: imageUrl || `https://picsum.photos/seed/${encodeURIComponent(generatedSeed)}/1280/720`,
           prompt: fp.prompt,
           shotType: fp.shotType || 'WS',
           cameraMove: fp.cameraMove || 'STATIC',
@@ -156,9 +155,10 @@ export async function POST(req: NextRequest) {
         })
       } catch (frameError) {
         console.error(`[storyboard] Error generating frame ${fp.frameNumber}:`, frameError)
+        const errorSeed = `error-${fp.frameNumber}-${Date.now()}`
         generatedFrames.push({
           frameNumber: fp.frameNumber,
-          imageUrl: `https://source.unsplash.com/1280x720/?movie&sig=${fp.frameNumber}-${Date.now()}`,
+          imageUrl: `https://picsum.photos/seed/${encodeURIComponent(errorSeed)}/1280/720`,
           prompt: fp.prompt,
           shotType: fp.shotType || 'WS',
           cameraMove: fp.cameraMove || 'STATIC',
