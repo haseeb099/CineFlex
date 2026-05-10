@@ -20,7 +20,9 @@ import {
   Play,
   Pause,
   FileDown,
-  Archive
+  Archive,
+  Film,
+  Mic
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -30,10 +32,11 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { AgentStatusBar } from '@/components/agents/AgentStatusBar'
 import { SceneInput } from '@/components/workspace/SceneInput'
 import { AnalysisPanel } from '@/components/workspace/AnalysisPanel'
-import { StoryboardGrid } from '@/components/workspace/StoryboardGrid'
+import { StoryboardEditor } from '@/components/workspace/StoryboardEditor'
+import { VideoStudio } from '@/components/workspace/VideoStudio'
+import { AudioStudio } from '@/components/workspace/AudioStudio'
+import { FinalExport } from '@/components/workspace/FinalExport'
 import { ShotList, ShotListCompact } from '@/components/workspace/ShotList'
-import { AudioPlayer } from '@/components/workspace/AudioPlayer'
-import { MotionTeaser } from '@/components/workspace/MotionTeaser'
 import { ScenesEmptyState } from '@/components/shared/EmptyState'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { useProjectStore } from '@/lib/store/projectStore'
@@ -82,6 +85,8 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
   const [sceneInput, setSceneInput] = useState('')
   const [projectContext, setProjectContext] = useState('')
   const [isExporting, setIsExporting] = useState(false)
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null)
+  const [voiceoverUrl, setVoiceoverUrl] = useState<string | null>(null)
 
   // Get project after mounted to avoid hydration mismatch
   const project = mounted ? getProject(id) : null
@@ -195,8 +200,10 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
   const handleDuplicateScene = (sceneId: string) => {
     if (duplicateScene) {
       const newScene = duplicateScene(project.id, sceneId)
-      setCurrentSceneId(newScene.id)
-      toast.success('Scene duplicated')
+      if (newScene) {
+        setCurrentSceneId(newScene.id)
+        toast.success('Scene duplicated')
+      }
     }
   }
 
@@ -309,47 +316,86 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     }
   }
 
-  const handleGenerateAudio = async () => {
-    if (!analysisResult?.audioMood?.promptForGeneration) return
-
-    setGeneratingAudio(true)
+  const handleRegenerateFrame = async (frameId: string) => {
+    if (!analysisResult) return
     
+    const frame = analysisResult.storyboardFramePrompts.find(f => f.id === frameId)
+    if (!frame) return
+
     try {
-      const response = await fetch('/api/generate-audio', {
+      const response = await fetch('/api/generate-storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          audioPrompt: analysisResult.audioMood.promptForGeneration
+          framePrompts: [frame]
         })
       })
 
-      const { audioUrl, mode } = await response.json()
+      if (!response.ok) throw new Error('Frame regeneration failed')
+
+      const { frames } = await response.json()
       
-      const updatedAudioMood: AudioMood = {
-        ...analysisResult.audioMood,
-        audioUrl: audioUrl || undefined
-      }
+      const updatedFrames = analysisResult.storyboardFramePrompts.map(f => 
+        f.id === frameId ? { ...f, imageUrl: frames[0]?.imageUrl || f.imageUrl, status: 'done' as const } : f
+      )
 
       setAnalysisResult({
         ...analysisResult,
-        audioMood: updatedAudioMood
+        storyboardFramePrompts: updatedFrames
       })
 
       if (currentSceneId) {
         updateScene(project.id, currentSceneId, {
-          audioMood: updatedAudioMood
+          storyboardFrames: updatedFrames
         })
       }
 
-      if (mode === 'description-only') {
-        toast.info('Audio description ready (no API key)')
-      } else {
-        toast.success('Audio generated!')
-      }
+      toast.success('Frame regenerated!')
     } catch (error) {
-      toast.error('Audio generation failed')
-    } finally {
-      setGeneratingAudio(false)
+      toast.error('Frame regeneration failed')
+    }
+  }
+
+  const handleFramesChange = (frames: StoryboardFrame[]) => {
+    if (!analysisResult) return
+    
+    setAnalysisResult({
+      ...analysisResult,
+      storyboardFramePrompts: frames
+    })
+
+    if (currentSceneId) {
+      updateScene(project.id, currentSceneId, {
+        storyboardFrames: frames
+      })
+    }
+  }
+
+  const handleAudioGenerated = (audioMood: AudioMood) => {
+    if (!analysisResult) return
+
+    setAnalysisResult({
+      ...analysisResult,
+      audioMood
+    })
+
+    if (currentSceneId) {
+      updateScene(project.id, currentSceneId, {
+        audioMood
+      })
+    }
+  }
+
+  const handleVoiceoverGenerated = (url: string) => {
+    setVoiceoverUrl(url)
+  }
+
+  const handleVideoGenerated = (url: string) => {
+    setGeneratedVideoUrl(url)
+    if (currentSceneId) {
+      updateScene(project.id, currentSceneId, {
+        motionTeaserUrl: url
+      })
     }
   }
 
@@ -358,26 +404,6 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     const markdown = generatePackageMarkdown(project, currentScene)
     downloadFile(markdown, `${project.title.replace(/[^a-z0-9]/gi, '_')}_scene_${currentScene.order}.md`)
     toast.success('Scene exported!')
-  }
-
-  const handleExportProject = async () => {
-    setIsExporting(true)
-    try {
-      let fullMarkdown = `# ${project.title}\n\n`
-      fullMarkdown += `**Genre:** ${project.genre}\n`
-      fullMarkdown += `**Visual Style:** ${project.visualStyle}\n\n`
-      fullMarkdown += `---\n\n`
-
-      for (const scene of project.scenes) {
-        fullMarkdown += generatePackageMarkdown(project, scene)
-        fullMarkdown += '\n\n---\n\n'
-      }
-
-      downloadFile(fullMarkdown, `${project.title.replace(/[^a-z0-9]/gi, '_')}_full_project.md`)
-      toast.success('Project exported!')
-    } finally {
-      setIsExporting(false)
-    }
   }
 
   const handleCopyPitch = () => {
@@ -447,8 +473,8 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
               </div>
             ) : (
               <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-                <div className="px-6 pt-4 border-b border-white/5 shrink-0">
-                  <TabsList className="bg-white/5">
+                <div className="px-6 pt-4 border-b border-white/5 shrink-0 overflow-x-auto">
+                  <TabsList className="bg-white/5 flex-wrap">
                     <TabsTrigger value="input" className="gap-2 data-[state=active]:bg-[#c084fc]/20">
                       <Pencil className="w-4 h-4" />
                       Write
@@ -462,20 +488,36 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                       Review
                     </TabsTrigger>
                     <TabsTrigger
-                      value="generate"
+                      value="storyboard"
                       disabled={!analysisResult}
                       className="gap-2 data-[state=active]:bg-[#c084fc]/20"
                     >
-                      <Wand2 className="w-4 h-4" />
-                      Generate
+                      <ImageIcon className="w-4 h-4" />
+                      Storyboard
                     </TabsTrigger>
                     <TabsTrigger
-                      value="package"
+                      value="video"
                       disabled={!analysisResult}
-                      className="gap-2 data-[state=active]:bg-[#c084fc]/20"
+                      className="gap-2 data-[state=active]:bg-[#4ade80]/20 data-[state=active]:text-[#4ade80]"
+                    >
+                      <Video className="w-4 h-4" />
+                      Video
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="audio"
+                      disabled={!analysisResult}
+                      className="gap-2 data-[state=active]:bg-[#f59e0b]/20 data-[state=active]:text-[#f59e0b]"
+                    >
+                      <Music className="w-4 h-4" />
+                      Audio
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="export"
+                      disabled={!analysisResult}
+                      className="gap-2 data-[state=active]:bg-[#38bdf8]/20 data-[state=active]:text-[#38bdf8]"
                     >
                       <Package className="w-4 h-4" />
-                      Package
+                      Export
                     </TabsTrigger>
                   </TabsList>
                 </div>
@@ -542,6 +584,20 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                             onEditSuggestion={(id, edited) => updateSuggestionStatus(id, 'edited', edited)}
                           />
 
+                          {/* Shot List Preview */}
+                          {analysisResult.shotList?.length > 0 && (
+                            <div className="mt-8">
+                              <div className="flex items-center gap-2 mb-4">
+                                <List className="w-5 h-5 text-[#38bdf8]" />
+                                <h3 className="text-lg font-semibold text-white">Shot List</h3>
+                                <span className="text-xs text-[#52526b]">
+                                  {analysisResult.shotList.length} shots
+                                </span>
+                              </div>
+                              <ShotListCompact shots={analysisResult.shotList} />
+                            </div>
+                          )}
+
                           <div className="mt-6 flex gap-3">
                             <Button
                               onClick={handleAnalyze}
@@ -549,238 +605,185 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                               className="gap-2 border-white/10"
                             >
                               <RefreshCw className="w-4 h-4" />
-                              Re-analyze with changes
+                              Re-analyze
                             </Button>
                             <Button
-                              onClick={() => setActiveTab('generate')}
+                              onClick={() => setActiveTab('storyboard')}
                               className="gap-2 bg-[#c084fc] hover:bg-[#a855f7] text-black"
                             >
-                              <Wand2 className="w-4 h-4" />
-                              Continue to Generate
+                              <ImageIcon className="w-4 h-4" />
+                              Create Storyboard
                             </Button>
                           </div>
                         </motion.div>
                       )}
                     </TabsContent>
 
-                    {/* GENERATE TAB */}
-                    <TabsContent value="generate" className="mt-0 data-[state=inactive]:hidden">
+                    {/* STORYBOARD TAB */}
+                    <TabsContent value="storyboard" className="mt-0 data-[state=inactive]:hidden">
                       {analysisResult && (
                         <motion.div
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="space-y-8"
+                          className="space-y-6"
                         >
-                          {/* Storyboard Section */}
-                          <section className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <ImageIcon className="w-5 h-5 text-[#c084fc]" />
-                                <h3 className="text-lg font-semibold text-white">Storyboard</h3>
-                                <span className="text-xs text-[#52526b]">
-                                  {analysisResult.storyboardFramePrompts.length} frames
-                                </span>
-                              </div>
-                              <Button
-                                onClick={handleGenerateStoryboard}
-                                disabled={isGeneratingStoryboard}
-                                size="sm"
-                                className="gap-2 bg-[#c084fc] hover:bg-[#a855f7] text-black"
-                              >
-                                {isGeneratingStoryboard ? (
-                                  <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Generating...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Wand2 className="w-4 h-4" />
-                                    Generate Images
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                            <StoryboardGrid
-                              frames={analysisResult.storyboardFramePrompts}
-                              isGenerating={isGeneratingStoryboard}
-                            />
-                          </section>
+                          <div>
+                            <h2 className="text-lg font-semibold text-white mb-1">
+                              Storyboard Editor
+                            </h2>
+                            <p className="text-sm text-[#52526b]">
+                              Plan your visual sequence. Add, edit, reorder, or regenerate frames.
+                            </p>
+                          </div>
 
-                          {/* Shot List Section */}
-                          <section className="space-y-4">
-                            <div className="flex items-center gap-2">
-                              <List className="w-5 h-5 text-[#38bdf8]" />
-                              <h3 className="text-lg font-semibold text-white">Shot List</h3>
-                              <span className="text-xs text-[#52526b]">
-                                {analysisResult.shotList.length} shots
-                              </span>
-                            </div>
-                            <ShotList shots={analysisResult.shotList} />
-                          </section>
+                          <StoryboardEditor
+                            frames={analysisResult.storyboardFramePrompts}
+                            isGenerating={isGeneratingStoryboard}
+                            onFramesChange={handleFramesChange}
+                            onGenerateImages={handleGenerateStoryboard}
+                            onRegenerateFrame={handleRegenerateFrame}
+                          />
 
-                          {/* Audio Section */}
-                          <section className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Music className="w-5 h-5 text-[#f59e0b]" />
-                                <h3 className="text-lg font-semibold text-white">Audio Mood</h3>
-                              </div>
-                              <Button
-                                onClick={handleGenerateAudio}
-                                disabled={isGeneratingAudio}
-                                size="sm"
-                                className="gap-2 bg-[#f59e0b] hover:bg-[#d97706] text-black"
-                              >
-                                {isGeneratingAudio ? (
-                                  <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Generating...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Wand2 className="w-4 h-4" />
-                                    Generate Audio
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                            <AudioPlayer
-                              audioMood={analysisResult.audioMood}
-                              isGenerating={isGeneratingAudio}
-                            />
-                          </section>
-
-                          {/* Motion Teaser Section - Video Generation */}
-                          <section className="space-y-4">
-                            <div className="flex items-center gap-2">
-                              <Video className="w-5 h-5 text-[#4ade80]" />
-                              <h3 className="text-lg font-semibold text-white">Video Generation</h3>
-                              <span className="text-xs text-[#52526b]">
-                                Create motion from storyboard
-                              </span>
-                            </div>
-                            <MotionTeaser
-                              frames={analysisResult.storyboardFramePrompts}
-                              sceneDescription={analysisResult.refinedScene}
-                              onMotionGenerated={(prompt) => {
-                                if (currentSceneId) {
-                                  updateScene(project.id, currentSceneId, {
-                                    motionTeaserPrompt: prompt
-                                  })
-                                }
-                              }}
-                            />
-                          </section>
-
-                          {/* Continue to Package */}
-                          <div className="flex justify-end">
+                          <div className="flex gap-3 pt-4">
                             <Button
-                              onClick={() => setActiveTab('package')}
-                              className="gap-2 bg-[#c084fc] hover:bg-[#a855f7] text-black"
+                              onClick={() => setActiveTab('video')}
+                              disabled={analysisResult.storyboardFramePrompts.filter(f => f.imageUrl).length === 0}
+                              className="gap-2 bg-gradient-to-r from-[#4ade80] to-[#38bdf8] hover:opacity-90 text-black"
                             >
-                              <Package className="w-4 h-4" />
-                              View Package
+                              <Video className="w-4 h-4" />
+                              Generate Video
+                            </Button>
+                            <Button
+                              onClick={() => setActiveTab('audio')}
+                              variant="outline"
+                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
+                            >
+                              <Music className="w-4 h-4" />
+                              Add Audio
                             </Button>
                           </div>
                         </motion.div>
                       )}
                     </TabsContent>
 
-                    {/* PACKAGE TAB */}
-                    <TabsContent value="package" className="mt-0 data-[state=inactive]:hidden">
+                    {/* VIDEO TAB */}
+                    <TabsContent value="video" className="mt-0 data-[state=inactive]:hidden">
+                      {analysisResult && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="space-y-6"
+                        >
+                          <div>
+                            <h2 className="text-lg font-semibold text-white mb-1">
+                              Video Studio
+                            </h2>
+                            <p className="text-sm text-[#52526b]">
+                              Generate video from your storyboard with timeline editing.
+                            </p>
+                          </div>
+
+                          <VideoStudio
+                            frames={analysisResult.storyboardFramePrompts}
+                            audioMood={analysisResult.audioMood}
+                            sceneDescription={analysisResult.refinedScene}
+                            enhancedPrompt={analysisResult.refinedScene}
+                            onVideoGenerated={handleVideoGenerated}
+                          />
+
+                          <div className="flex gap-3 pt-4">
+                            <Button
+                              onClick={() => setActiveTab('audio')}
+                              variant="outline"
+                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
+                            >
+                              <Music className="w-4 h-4" />
+                              Edit Audio
+                            </Button>
+                            <Button
+                              onClick={() => setActiveTab('export')}
+                              className="gap-2 bg-[#38bdf8] hover:bg-[#0ea5e9] text-black"
+                            >
+                              <Package className="w-4 h-4" />
+                              Export Project
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </TabsContent>
+
+                    {/* AUDIO TAB */}
+                    <TabsContent value="audio" className="mt-0 data-[state=inactive]:hidden">
+                      {analysisResult && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="space-y-6"
+                        >
+                          <div>
+                            <h2 className="text-lg font-semibold text-white mb-1">
+                              Audio Studio
+                            </h2>
+                            <p className="text-sm text-[#52526b]">
+                              Create background music and AI voiceover for your video.
+                            </p>
+                          </div>
+
+                          <AudioStudio
+                            audioMood={analysisResult.audioMood}
+                            sceneDescription={analysisResult.refinedScene}
+                            enhancedPrompt={analysisResult.refinedScene}
+                            onAudioGenerated={handleAudioGenerated}
+                            onVoiceoverGenerated={handleVoiceoverGenerated}
+                          />
+
+                          <div className="flex gap-3 pt-4">
+                            <Button
+                              onClick={() => setActiveTab('video')}
+                              variant="outline"
+                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
+                            >
+                              <Video className="w-4 h-4" />
+                              Back to Video
+                            </Button>
+                            <Button
+                              onClick={() => setActiveTab('export')}
+                              className="gap-2 bg-[#38bdf8] hover:bg-[#0ea5e9] text-black"
+                            >
+                              <Package className="w-4 h-4" />
+                              Export Project
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </TabsContent>
+
+                    {/* EXPORT TAB */}
+                    <TabsContent value="export" className="mt-0 data-[state=inactive]:hidden">
                       {analysisResult && currentScene && (
                         <motion.div
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           className="space-y-6"
                         >
-                          <div className="flex items-center justify-between">
-                            <h2 className="text-lg font-semibold text-white">
-                              Cinematic Package
+                          <div>
+                            <h2 className="text-lg font-semibold text-white mb-1">
+                              Final Export
                             </h2>
-                            <div className="flex gap-2">
-                              <Button
-                                onClick={handleCopyPitch}
-                                size="sm"
-                                variant="outline"
-                                className="gap-2 border-white/10"
-                              >
-                                <Copy className="w-4 h-4" />
-                                Copy Pitch
-                              </Button>
-                              <Button
-                                onClick={handleExportScene}
-                                size="sm"
-                                variant="outline"
-                                className="gap-2 border-white/10"
-                              >
-                                <FileDown className="w-4 h-4" />
-                                Export Scene
-                              </Button>
-                              <Button
-                                onClick={handleExportProject}
-                                disabled={isExporting}
-                                size="sm"
-                                className="gap-2 bg-[#c084fc] hover:bg-[#a855f7] text-black"
-                              >
-                                {isExporting ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Archive className="w-4 h-4" />
-                                )}
-                                Export Full Project
-                              </Button>
-                            </div>
+                            <p className="text-sm text-[#52526b]">
+                              Download your complete project package with all assets.
+                            </p>
                           </div>
 
-                          {/* Logline */}
-                          <div className="p-6 rounded-xl border border-[#c084fc]/30 bg-[#c084fc]/5">
-                            <h3 className="text-xs font-mono uppercase text-[#c084fc] mb-2">Logline</h3>
-                            <p className="text-xl font-medium text-white">{analysisResult.logline}</p>
-                          </div>
-
-                          {/* Refined Scene */}
-                          <div className="p-4 rounded-xl border border-white/10 bg-[#111118]">
-                            <h3 className="text-xs font-mono uppercase text-[#52526b] mb-2">Refined Scene</h3>
-                            <p className="text-sm text-[#a1a1bc] leading-relaxed whitespace-pre-wrap">{analysisResult.refinedScene}</p>
-                          </div>
-
-                          {/* Storyboard Preview */}
-                          {analysisResult.storyboardFramePrompts.length > 0 && (
-                            <div>
-                              <h3 className="text-xs font-mono uppercase text-[#52526b] mb-3">Storyboard</h3>
-                              <StoryboardGrid frames={analysisResult.storyboardFramePrompts.slice(0, 3)} />
-                            </div>
-                          )}
-
-                          {/* Shot List Preview */}
-                          {analysisResult.shotList.length > 0 && (
-                            <div>
-                              <h3 className="text-xs font-mono uppercase text-[#52526b] mb-3">Shot List</h3>
-                              <ShotListCompact shots={analysisResult.shotList} />
-                            </div>
-                          )}
-
-                          {/* Audio Preview */}
-                          {analysisResult.audioMood && (
-                            <div>
-                              <h3 className="text-xs font-mono uppercase text-[#52526b] mb-3">Audio Mood</h3>
-                              <div className="p-4 rounded-xl border border-white/10 bg-[#111118]">
-                                <div className="flex flex-wrap gap-2 mb-3">
-                                  <span className="px-2 py-1 rounded-full bg-[#f59e0b]/20 text-[#f59e0b] text-xs">
-                                    {analysisResult.audioMood.genre}
-                                  </span>
-                                  <span className="px-2 py-1 rounded-full bg-[#38bdf8]/20 text-[#38bdf8] text-xs">
-                                    {analysisResult.audioMood.tempo}
-                                  </span>
-                                  <span className="px-2 py-1 rounded-full bg-[#c084fc]/20 text-[#c084fc] text-xs">
-                                    {analysisResult.audioMood.mood}
-                                  </span>
-                                </div>
-                                <p className="text-sm text-[#a1a1bc]">{analysisResult.audioMood.acousticWorld}</p>
-                              </div>
-                            </div>
-                          )}
+                          <FinalExport
+                            project={project}
+                            scene={currentScene}
+                            frames={analysisResult.storyboardFramePrompts}
+                            audioMood={analysisResult.audioMood}
+                            voiceoverUrl={voiceoverUrl || undefined}
+                            videoUrl={generatedVideoUrl || currentScene.motionTeaserUrl || undefined}
+                            enhancedPrompt={analysisResult.refinedScene}
+                          />
                         </motion.div>
                       )}
                     </TabsContent>
@@ -802,7 +805,7 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs text-[#a1a1bc]">Storyboard</span>
                       <span className="text-[10px] text-[#52526b]">
-                        {analysisResult.storyboardFramePrompts.length} frames
+                        {analysisResult.storyboardFramePrompts.filter(f => f.imageUrl).length}/{analysisResult.storyboardFramePrompts.length} frames
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -816,6 +819,7 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                               src={frame.imageUrl}
                               alt={`Frame ${frame.frameNumber}`}
                               className="w-full h-full object-cover"
+                              crossOrigin="anonymous"
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
@@ -824,6 +828,24 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                           )}
                         </div>
                       ))}
+                    </div>
+                    {analysisResult.storyboardFramePrompts.length > 4 && (
+                      <p className="text-[10px] text-[#52526b] mt-2 text-center">
+                        +{analysisResult.storyboardFramePrompts.length - 4} more frames
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Video Preview */}
+                {generatedVideoUrl && (
+                  <div className="mb-6">
+                    <span className="text-xs text-[#a1a1bc] block mb-2">Video</span>
+                    <div className="p-3 rounded-lg border border-[#4ade80]/30 bg-[#4ade80]/5">
+                      <div className="flex items-center gap-2">
+                        <Video className="w-4 h-4 text-[#4ade80]" />
+                        <span className="text-sm text-white">Video Ready</span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -835,15 +857,33 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                     <div className="p-3 rounded-lg border border-white/5 bg-[#111118]">
                       <div className="flex items-center gap-2 mb-2">
                         <Music className="w-4 h-4 text-[#f59e0b]" />
-                        <span className="text-sm text-white">{analysisResult.audioMood.genre}</span>
+                        <span className="text-sm text-white">{analysisResult.audioMood.genre || 'Cinematic'}</span>
                       </div>
                       <p className="text-xs text-[#52526b]">{analysisResult.audioMood.mood}</p>
+                      {analysisResult.audioMood.audioUrl && (
+                        <span className="inline-block mt-2 px-2 py-0.5 text-[10px] bg-[#4ade80]/10 text-[#4ade80] rounded">
+                          Track Ready
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Voiceover Preview */}
+                {voiceoverUrl && (
+                  <div className="mb-6">
+                    <span className="text-xs text-[#a1a1bc] block mb-2">Voiceover</span>
+                    <div className="p-3 rounded-lg border border-[#38bdf8]/30 bg-[#38bdf8]/5">
+                      <div className="flex items-center gap-2">
+                        <Mic className="w-4 h-4 text-[#38bdf8]" />
+                        <span className="text-sm text-white">Narration Ready</span>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {/* Shot Count */}
-                {analysisResult.shotList.length > 0 && (
+                {analysisResult.shotList?.length > 0 && (
                   <div className="mb-6">
                     <span className="text-xs text-[#a1a1bc] block mb-2">Shot List</span>
                     <div className="p-3 rounded-lg border border-white/5 bg-[#111118]">
