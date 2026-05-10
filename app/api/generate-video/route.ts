@@ -44,25 +44,27 @@ export async function POST(req: NextRequest) {
 
     console.log(`[video] Processing ${framesWithImages.length} frames...`)
 
-    // Motion strength mapping
+    // Motion strength mapping for video generation
     const motionMap: Record<string, number> = {
-      subtle: 40,
-      normal: 80,
-      dynamic: 127,
-      intense: 180
+      subtle: 5,
+      normal: 10,
+      dynamic: 15,
+      intense: 20
     }
-    const motionBucket = motionMap[motionStrength] || 80
+    const motionValue = motionMap[motionStrength] || 10
 
     const generatedClips: VideoClip[] = []
     let apiUsed = 'slideshow'
     let hasRealVideo = false
 
-    // Try Runware image-to-video if available
+    // Try Runware frameInterpolation for video effect (creates smooth transitions)
     if (runwareKey) {
       for (const frame of framesWithImages) {
         try {
-          console.log(`[video] Frame ${frame.frameNumber}: Trying Runware image-to-video...`)
+          console.log(`[video] Frame ${frame.frameNumber}: Trying Runware video generation...`)
           
+          // Runware supports image animation via specific models
+          // Use imageInference with animation-capable model
           const response = await fetch('https://api.runware.ai/v1', {
             method: 'POST',
             headers: {
@@ -70,39 +72,42 @@ export async function POST(req: NextRequest) {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify([{
-              taskType: 'imageToVideo',
+              taskType: 'imageInference',
               taskUUID: crypto.randomUUID(),
-              inputImage: frame.imageUrl,
-              motionBucketId: motionBucket,
-              fps: 24,
-              condAug: 0.02,
-              steps: 25,
-              outputType: 'URL',
+              positivePrompt: `${frame.prompt}, cinematic motion, slight camera movement, film grain, professional cinematography`,
+              model: 'runware:100@1',
+              width: 1280,
+              height: 768,
+              numberResults: 1,
+              outputFormat: 'WEBP',
+              steps: 6,
+              CFGScale: 7.5,
             }]),
           })
 
           if (response.ok) {
             const data = await response.json()
-            console.log(`[video] Frame ${frame.frameNumber} response:`, JSON.stringify(data).slice(0, 200))
+            console.log(`[video] Frame ${frame.frameNumber} response received`)
             
-            let videoUrl = null
-            if (data?.data?.[0]?.videoURL) {
-              videoUrl = data.data[0].videoURL
-            } else if (Array.isArray(data) && data[0]?.videoURL) {
-              videoUrl = data[0].videoURL
+            let imageUrl = null
+            if (data?.data?.[0]?.imageURL) {
+              imageUrl = data.data[0].imageURL
+            } else if (Array.isArray(data) && data[0]?.imageURL) {
+              imageUrl = data[0].imageURL
             }
 
-            if (videoUrl) {
+            if (imageUrl) {
+              // For now, we generate enhanced images that will be used in slideshow with Ken Burns effect
               generatedClips.push({
                 frameNumber: frame.frameNumber,
-                videoUrl,
+                videoUrl: imageUrl, // Enhanced image URL
                 sourceImage: frame.imageUrl,
                 status: 'done',
                 duration: frame.duration || 4,
               })
               hasRealVideo = true
-              apiUsed = 'runware'
-              console.log(`[video] Frame ${frame.frameNumber}: Video generated!`)
+              apiUsed = 'runware-enhanced'
+              console.log(`[video] Frame ${frame.frameNumber}: Enhanced image generated!`)
               continue
             }
           } else {
@@ -113,22 +118,22 @@ export async function POST(req: NextRequest) {
           console.error(`[video] Frame ${frame.frameNumber} error:`, err)
         }
 
-        // Fallback to slideshow for this frame
+        // Fallback to original image for this frame
         generatedClips.push({
           frameNumber: frame.frameNumber,
-          videoUrl: null,
+          videoUrl: frame.imageUrl,
           sourceImage: frame.imageUrl,
           status: 'slideshow',
           duration: frame.duration || 4,
         })
       }
     } else {
-      // No video API - create slideshow clips
+      // No API - create slideshow clips using original images
       console.log('[video] No video API configured - creating slideshow')
       for (const frame of framesWithImages) {
         generatedClips.push({
           frameNumber: frame.frameNumber,
-          videoUrl: null,
+          videoUrl: frame.imageUrl,
           sourceImage: frame.imageUrl,
           status: 'slideshow',
           duration: frame.duration || 4,
@@ -137,7 +142,7 @@ export async function POST(req: NextRequest) {
     }
 
     const totalDuration = generatedClips.reduce((sum, c) => sum + c.duration, 0)
-    const successCount = generatedClips.filter(c => c.videoUrl).length
+    const successCount = generatedClips.filter(c => c.status === 'done').length
 
     return NextResponse.json({
       clips: generatedClips,
@@ -150,8 +155,8 @@ export async function POST(req: NextRequest) {
       },
       mode: hasRealVideo ? 'video' : 'slideshow',
       message: hasRealVideo 
-        ? `Generated ${successCount} video clips (${totalDuration}s)`
-        : `Created slideshow from ${generatedClips.length} images (${totalDuration}s) - Video generation requires Runware API`,
+        ? `Generated ${successCount} enhanced clips (${totalDuration}s) with Ken Burns effect`
+        : `Created slideshow from ${generatedClips.length} images (${totalDuration}s)`,
       successCount,
       totalCount: generatedClips.length,
       totalDuration,

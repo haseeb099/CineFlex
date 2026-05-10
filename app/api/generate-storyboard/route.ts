@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
               positivePrompt: cinematicPrompt,
               model: 'runware:100@1', // FLUX.1 Schnell
               width: 1280,
-              height: 720,
+              height: 768, // Must be multiple of 64
               numberResults: 1,
               outputFormat: 'WEBP',
               steps: 4,

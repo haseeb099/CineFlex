@@ -265,28 +265,42 @@ If you see "Microphone access denied":
 
 ### Images not generating?
 
-1. Check if `RUNWARE_API_KEY` is set in Settings > Vars
+1. Check if `RUNWARE_API_KEY` is set in Settings > Vars (gear icon top right)
 2. If not set, Pollinations.ai (free) will be used automatically
-3. Check console for error messages
+3. Pollinations images load on-demand and may take 2-3 seconds
+4. Check browser console for specific error messages
 
 ### Enhance prompt failing?
 
-1. Check if `GROQ_API_KEY` is set
-2. If Groq rate limited, wait 60 seconds and retry
-3. The system has fallback logic that works without AI
+1. Check if `GROQ_API_KEY` is set correctly
+2. Groq has daily token limits - if rate limited (429 error), wait a few minutes
+3. The system has intelligent fallback that enhances prompts locally
 
-### Video not generating?
+### Video output is a slideshow?
 
-1. Video generation requires `POPCORN_API_KEY` or `RUNWARE_API_KEY`
-2. Without these, videos appear as slideshows of images
-3. Each video clip takes 30-60 seconds to generate
+CineFlex creates cinematic slideshows with Ken Burns effects from storyboard frames:
+- True AI video generation (image-to-video) is not yet widely available
+- The slideshow includes smooth transitions, zoom effects, and synchronized audio
+- Voiceover and music are properly synced with the visual timeline
 
 ### Voice input not working?
 
-1. Click the lock icon in browser address bar
-2. Allow microphone permission
-3. Refresh the page
-4. Use HTTPS or localhost
+**"Microphone access denied" error:**
+1. Click the lock/shield icon in your browser's address bar (left of URL)
+2. Find "Microphone" in site permissions
+3. Change from "Block" to "Allow"
+4. Refresh the page and try again
+
+**Note:** Voice input requires:
+- Modern browser (Chrome 33+, Edge 79+, Safari 14.1+)
+- HTTPS connection (or localhost for development)
+- User must explicitly grant permission
+
+### Concept previews failing?
+
+1. Character previews use the storyboard API
+2. If one type works but others don't, check the console for specific errors
+3. All previews fall back to Pollinations.ai if Runware fails
 
 ---
 
