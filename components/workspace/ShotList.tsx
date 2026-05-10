@@ -83,8 +83,8 @@ export function ShotList({ shots }: ShotListProps) {
 
 export function ShotListCompact({ shots }: ShotListProps) {
   return (
-    <div className="space-y-2">
-      {shots.slice(0, 5).map((shot, i) => (
+    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+      {shots.map((shot, i) => (
         <div
           key={`${shot.shotNumber}-${i}`}
           className="flex items-center gap-2 px-3 py-2 bg-white/3 rounded-lg border border-white/5"
@@ -96,11 +96,6 @@ export function ShotListCompact({ shots }: ShotListProps) {
           <span className="text-xs text-[#a1a1bc] truncate flex-1">{shot.description}</span>
         </div>
       ))}
-      {shots.length > 5 && (
-        <p className="text-[10px] text-[#52526b] text-center">
-          +{shots.length - 5} more shots
-        </p>
-      )}
     </div>
   )
 }

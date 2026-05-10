@@ -93,24 +93,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Check for available image generation APIs (in order of preference)
+    // Pollinations.ai is FREE and requires no API key - used as fallback
     const runwareKey = process.env.RUNWARE_API_KEY
     const imgnKey = process.env.IMGN_API_KEY
+    const usePollinations = !runwareKey && !imgnKey
 
-    console.log('[storyboard] API Keys configured:', {
-      runware: runwareKey ? `${runwareKey.slice(0, 8)}...` : 'NOT SET',
-      imgn: imgnKey ? `${imgnKey.slice(0, 8)}...` : 'NOT SET'
+    console.log('[storyboard] API configuration:', {
+      runware: runwareKey ? 'configured' : 'NOT SET',
+      imgn: imgnKey ? 'configured' : 'NOT SET',
+      pollinations: usePollinations ? 'FALLBACK (free)' : 'not needed'
     })
-
-    if (!runwareKey && !imgnKey) {
-      console.error('[storyboard] No image generation API configured')
-      return NextResponse.json({
-        error: 'No image generation API configured',
-        message: 'Add RUNWARE_API_KEY or IMGN_API_KEY in Settings > Vars (gear icon top right)',
-        frames: [],
-        mode: 'error',
-        apiStatus: { runware: false, imgn: false }
-      }, { status: 500 })
-    }
 
     const generatedFrames = []
 
@@ -192,6 +184,19 @@ export async function POST(req: NextRequest) {
             const data = await response.json()
             imageUrl = data?.data?.[0]?.url || data?.images?.[0]?.url || null
           }
+        } else {
+          // FREE FALLBACK: Pollinations.ai - no API key required!
+          console.log(`[storyboard] Generating frame ${fp.frameNumber} with Pollinations (FREE)...`)
+          
+          // Pollinations generates images via URL - encode the prompt
+          const shortPrompt = cinematicPrompt.slice(0, 500) // Limit prompt length for URL
+          const encodedPrompt = encodeURIComponent(shortPrompt)
+          const seed = Date.now() + fp.frameNumber
+          
+          // Pollinations.ai direct image URL
+          imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&seed=${seed}&nologo=true`
+          
+          console.log(`[storyboard] Pollinations URL generated for frame ${fp.frameNumber}`)
         }
 
         if (imageUrl) {
@@ -240,7 +245,7 @@ export async function POST(req: NextRequest) {
         : 'Image generation failed. Check your API key configuration.',
       successCount,
       totalCount: generatedFrames.length,
-      apiUsed: runwareKey ? 'runware' : 'imgn'
+      apiUsed: runwareKey ? 'runware' : imgnKey ? 'imgn' : 'pollinations (free)'
     })
 
   } catch (err) {
