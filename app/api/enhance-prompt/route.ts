@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     if (!process.env.GROQ_API_KEY) {
       return NextResponse.json(
-        { error: 'API not configured. Add GROQ_API_KEY in Settings > Vars.' },
+        { error: 'API not configured. Add GROQ_API_KEY to environment variables in Settings > Vars.' },
         { status: 500 }
       )
     }

@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/utils/rateLimit'
+import * as fal from '@fal-ai/serverless-client'
 
-interface VideoPrompt {
-  sceneNumber: number
+interface VideoFrame {
+  frameNumber: number
+  imageUrl: string
   prompt: string
   duration?: number
-  style?: string
+}
+
+interface VideoClip {
+  frameNumber: number
+  videoUrl: string | null
+  sourceImage: string
+  status: 'pending' | 'generating' | 'done' | 'error'
+  duration: number
+  error?: string
 }
 
 export async function POST(req: NextRequest) {
@@ -20,102 +30,98 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { videoPrompts, imageUrl, sceneDescription } = await req.json()
+    const { frames, sceneDescription, motionStrength = 'normal' } = await req.json()
 
-    if (!videoPrompts && !imageUrl) {
+    if (!frames || !Array.isArray(frames) || frames.length === 0) {
       return NextResponse.json(
-        { error: 'Video prompts or source image required' },
+        { error: 'Frames array required' },
         { status: 400 }
       )
     }
 
-    // If no Runware key, return a helpful message with demo content
-    if (!process.env.RUNWARE_API_KEY) {
-      // Return sample video URLs for demo purposes
-      const sampleVideos = [
-        'https://assets.mixkit.co/videos/preview/mixkit-clouds-and-blue-sky-2408-large.mp4',
-        'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-city-traffic-at-night-11-large.mp4',
-        'https://assets.mixkit.co/videos/preview/mixkit-forest-stream-in-the-sunlight-529-large.mp4',
-      ]
-      
+    // Check for API keys
+    const falKey = process.env.FAL_KEY
+    const runwareKey = process.env.RUNWARE_API_KEY
+
+    if (!falKey && !runwareKey) {
       return NextResponse.json({
-        videos: [{
-          sceneNumber: 1,
-          videoUrl: sampleVideos[Math.floor(Math.random() * sampleVideos.length)],
-          mode: 'demo',
-          duration: 10,
-          message: 'Demo video - Add RUNWARE_API_KEY for real generation'
-        }],
-        mode: 'demo',
-        message: 'Video generation requires RUNWARE_API_KEY. Using demo video.'
-      })
+        error: 'No video generation API configured. Add FAL_KEY in Settings > Vars.',
+        clips: [],
+        mode: 'error'
+      }, { status: 500 })
     }
 
-    const generatedVideos = []
+    // Configure Fal if available
+    if (falKey) {
+      fal.config({ credentials: falKey })
+    }
 
-    // If we have an image URL, do image-to-video generation
-    if (imageUrl) {
-      try {
-        // Use Runware's image-to-video endpoint
-        const response = await fetch('https://api.runware.ai/v1', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.RUNWARE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify([{
-            taskType: 'imageToVideo',
-            taskUUID: `video-i2v-${Date.now()}`,
-            inputImage: imageUrl,
-            motionStrength: 0.6,
-            duration: 5,
-            fps: 24,
-            outputType: 'URL',
-            model: 'runware:101@1', // Video model
-          }]),
+    const generatedClips: VideoClip[] = []
+    
+    // Motion strength mapping
+    const motionMap: Record<string, number> = {
+      subtle: 0.3,
+      normal: 0.5,
+      dynamic: 0.7,
+      intense: 0.9
+    }
+    const motionValue = motionMap[motionStrength] || 0.5
+
+    for (const frame of frames as VideoFrame[]) {
+      if (!frame.imageUrl) {
+        generatedClips.push({
+          frameNumber: frame.frameNumber,
+          videoUrl: null,
+          sourceImage: '',
+          status: 'error',
+          duration: frame.duration || 4,
+          error: 'No source image'
         })
+        continue
+      }
 
-        if (response.ok) {
-          const data = await response.json()
-          const videoUrl = Array.isArray(data) && data[0]?.videoURL 
-            ? data[0].videoURL 
-            : data?.videoURL || data?.data?.[0]?.videoURL
+      try {
+        console.log(`[video] Generating video for frame ${frame.frameNumber}...`)
+
+        if (falKey) {
+          // Use Fal.ai's image-to-video model (Stable Video Diffusion)
+          const result = await fal.subscribe('fal-ai/stable-video-diffusion', {
+            input: {
+              image_url: frame.imageUrl,
+              motion_bucket_id: Math.floor(motionValue * 255), // 0-255 motion intensity
+              fps: 24,
+              cond_aug: 0.02, // Low conditioning augmentation for stable results
+            },
+          }) as { video?: { url?: string } }
+
+          const videoUrl = result.video?.url || null
+
+          generatedClips.push({
+            frameNumber: frame.frameNumber,
+            videoUrl,
+            sourceImage: frame.imageUrl,
+            status: videoUrl ? 'done' : 'error',
+            duration: frame.duration || 4,
+            error: videoUrl ? undefined : 'Video generation failed'
+          })
 
           if (videoUrl) {
-            generatedVideos.push({
-              sceneNumber: 1,
-              videoUrl,
-              mode: 'generated',
-              duration: 5,
-              sourceType: 'image-to-video'
-            })
+            console.log(`[video] Frame ${frame.frameNumber} video generated successfully`)
           }
-        } else {
-          console.error('[video] Runware I2V error:', response.status, await response.text())
-        }
-      } catch (err) {
-        console.error('[video] Image-to-video error:', err)
-      }
-    }
-
-    // Process text-to-video prompts if provided
-    if (videoPrompts && Array.isArray(videoPrompts)) {
-      for (const vp of videoPrompts as VideoPrompt[]) {
-        try {
-          const cinematicPrompt = `Cinematic film scene, professional cinematography, smooth camera motion, 24fps, ${vp.style || 'dramatic lighting'}: ${vp.prompt}. High production value, movie quality, shallow depth of field, color graded.`
-
+        } else if (runwareKey) {
+          // Use Runware's image-to-video API
           const response = await fetch('https://api.runware.ai/v1', {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${process.env.RUNWARE_API_KEY}`,
+              'Authorization': `Bearer ${runwareKey}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify([{
-              taskType: 'textToVideo',
-              taskUUID: `video-t2v-${vp.sceneNumber}-${Date.now()}`,
-              positivePrompt: cinematicPrompt,
-              negativePrompt: 'text, watermark, glitch, artifacts, low quality, blur, amateur, shaky, low resolution',
-              duration: vp.duration || 5,
+              taskType: 'imageToVideo',
+              taskUUID: `video-${frame.frameNumber}-${Date.now()}`,
+              inputImage: frame.imageUrl,
+              motionStrength: motionValue,
+              duration: frame.duration || 4,
               fps: 24,
               outputType: 'URL',
             }]),
@@ -127,57 +133,59 @@ export async function POST(req: NextRequest) {
               ? data[0].videoURL 
               : data?.videoURL
 
-            generatedVideos.push({
-              sceneNumber: vp.sceneNumber,
+            generatedClips.push({
+              frameNumber: frame.frameNumber,
               videoUrl: videoUrl || null,
-              prompt: vp.prompt,
-              mode: videoUrl ? 'generated' : 'pending',
-              duration: vp.duration || 5,
-              sourceType: 'text-to-video'
+              sourceImage: frame.imageUrl,
+              status: videoUrl ? 'done' : 'error',
+              duration: frame.duration || 4
             })
           } else {
-            const errorText = await response.text()
-            console.error(`[video] T2V error for scene ${vp.sceneNumber}:`, response.status, errorText)
-            generatedVideos.push({
-              sceneNumber: vp.sceneNumber,
+            generatedClips.push({
+              frameNumber: frame.frameNumber,
               videoUrl: null,
-              prompt: vp.prompt,
-              mode: 'error',
-              error: `Generation failed: ${response.status}`,
-              duration: vp.duration || 5
+              sourceImage: frame.imageUrl,
+              status: 'error',
+              duration: frame.duration || 4,
+              error: `API error: ${response.status}`
             })
           }
-        } catch (videoError) {
-          console.error(`[video] Error generating scene ${vp.sceneNumber}:`, videoError)
-          generatedVideos.push({
-            sceneNumber: vp.sceneNumber,
-            videoUrl: null,
-            prompt: vp.prompt,
-            mode: 'error',
-            error: videoError instanceof Error ? videoError.message : 'Unknown error',
-            duration: vp.duration || 5
-          })
         }
+      } catch (frameError) {
+        console.error(`[video] Error generating video for frame ${frame.frameNumber}:`, frameError)
+        generatedClips.push({
+          frameNumber: frame.frameNumber,
+          videoUrl: null,
+          sourceImage: frame.imageUrl,
+          status: 'error',
+          duration: frame.duration || 4,
+          error: frameError instanceof Error ? frameError.message : 'Unknown error'
+        })
       }
     }
 
-    // Return results
-    const successCount = generatedVideos.filter(v => v.videoUrl).length
+    const successCount = generatedClips.filter(c => c.videoUrl).length
+    const totalDuration = generatedClips.reduce((sum, c) => sum + c.duration, 0)
+
     return NextResponse.json({
-      videos: generatedVideos,
-      mode: successCount > 0 ? 'generated' : 'pending',
+      clips: generatedClips,
+      mode: successCount > 0 ? 'generated' : 'error',
       message: successCount > 0 
-        ? `Generated ${successCount} video(s) successfully`
-        : 'Video generation in progress',
+        ? `Generated ${successCount}/${generatedClips.length} video clips`
+        : 'Video generation failed. Check your API key.',
+      successCount,
+      totalCount: generatedClips.length,
+      totalDuration,
       sceneDescription
     })
+
   } catch (err) {
     console.error('[video] error:', err instanceof Error ? err.message : 'unknown')
     return NextResponse.json({
       error: 'Video generation failed',
-      videos: [],
-      mode: 'error',
-      message: err instanceof Error ? err.message : 'Unknown error'
+      message: err instanceof Error ? err.message : 'Unknown error',
+      clips: [],
+      mode: 'error'
     }, { status: 500 })
   }
 }

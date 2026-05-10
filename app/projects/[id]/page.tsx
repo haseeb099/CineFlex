@@ -496,20 +496,20 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                       Storyboard
                     </TabsTrigger>
                     <TabsTrigger
-                      value="video"
-                      disabled={!analysisResult}
-                      className="gap-2 data-[state=active]:bg-[#4ade80]/20 data-[state=active]:text-[#4ade80]"
-                    >
-                      <Video className="w-4 h-4" />
-                      Video
-                    </TabsTrigger>
-                    <TabsTrigger
                       value="audio"
                       disabled={!analysisResult}
                       className="gap-2 data-[state=active]:bg-[#f59e0b]/20 data-[state=active]:text-[#f59e0b]"
                     >
                       <Music className="w-4 h-4" />
                       Audio
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="video"
+                      disabled={!analysisResult}
+                      className="gap-2 data-[state=active]:bg-[#4ade80]/20 data-[state=active]:text-[#4ade80]"
+                    >
+                      <Video className="w-4 h-4" />
+                      Video
                     </TabsTrigger>
                     <TabsTrigger
                       value="export"
@@ -646,20 +646,66 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
 
                           <div className="flex gap-3 pt-4">
                             <Button
+                              onClick={() => setActiveTab('audio')}
+                              className="gap-2 bg-[#f59e0b] hover:bg-[#d97706] text-black"
+                            >
+                              <Music className="w-4 h-4" />
+                              Add Audio & Music
+                            </Button>
+                            <Button
                               onClick={() => setActiveTab('video')}
                               disabled={analysisResult.storyboardFramePrompts.filter(f => f.imageUrl).length === 0}
+                              variant="outline"
+                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
+                            >
+                              <Video className="w-4 h-4" />
+                              Skip to Video
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </TabsContent>
+
+                    {/* AUDIO TAB */}
+                    <TabsContent value="audio" className="mt-0 data-[state=inactive]:hidden">
+                      {analysisResult && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="space-y-6"
+                        >
+                          <div>
+                            <h2 className="text-lg font-semibold text-white mb-1">
+                              Audio Studio
+                            </h2>
+                            <p className="text-sm text-[#52526b]">
+                              Create background music and AI voiceover for your video.
+                            </p>
+                          </div>
+
+                          <AudioStudio
+                            audioMood={analysisResult.audioMood}
+                            sceneDescription={analysisResult.refinedScene}
+                            enhancedPrompt={analysisResult.refinedScene}
+                            onAudioGenerated={handleAudioGenerated}
+                            onVoiceoverGenerated={handleVoiceoverGenerated}
+                          />
+
+                          <div className="flex gap-3 pt-4">
+                            <Button
+                              onClick={() => setActiveTab('storyboard')}
+                              variant="outline"
+                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
+                            >
+                              <ImageIcon className="w-4 h-4" />
+                              Back to Storyboard
+                            </Button>
+                            <Button
+                              onClick={() => setActiveTab('video')}
                               className="gap-2 bg-gradient-to-r from-[#4ade80] to-[#38bdf8] hover:opacity-90 text-black"
                             >
                               <Video className="w-4 h-4" />
                               Generate Video
-                            </Button>
-                            <Button
-                              onClick={() => setActiveTab('audio')}
-                              variant="outline"
-                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
-                            >
-                              <Music className="w-4 h-4" />
-                              Add Audio
                             </Button>
                           </div>
                         </motion.div>
@@ -699,52 +745,6 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                             >
                               <Music className="w-4 h-4" />
                               Edit Audio
-                            </Button>
-                            <Button
-                              onClick={() => setActiveTab('export')}
-                              className="gap-2 bg-[#38bdf8] hover:bg-[#0ea5e9] text-black"
-                            >
-                              <Package className="w-4 h-4" />
-                              Export Project
-                            </Button>
-                          </div>
-                        </motion.div>
-                      )}
-                    </TabsContent>
-
-                    {/* AUDIO TAB */}
-                    <TabsContent value="audio" className="mt-0 data-[state=inactive]:hidden">
-                      {analysisResult && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="space-y-6"
-                        >
-                          <div>
-                            <h2 className="text-lg font-semibold text-white mb-1">
-                              Audio Studio
-                            </h2>
-                            <p className="text-sm text-[#52526b]">
-                              Create background music and AI voiceover for your video.
-                            </p>
-                          </div>
-
-                          <AudioStudio
-                            audioMood={analysisResult.audioMood}
-                            sceneDescription={analysisResult.refinedScene}
-                            enhancedPrompt={analysisResult.refinedScene}
-                            onAudioGenerated={handleAudioGenerated}
-                            onVoiceoverGenerated={handleVoiceoverGenerated}
-                          />
-
-                          <div className="flex gap-3 pt-4">
-                            <Button
-                              onClick={() => setActiveTab('video')}
-                              variant="outline"
-                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
-                            >
-                              <Video className="w-4 h-4" />
-                              Back to Video
                             </Button>
                             <Button
                               onClick={() => setActiveTab('export')}

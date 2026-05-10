@@ -227,14 +227,14 @@ export function VideoStudio({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageUrl: framesWithImages[0].imageUrl,
-          sceneDescription: videoPrompt,
-          videoPrompts: framesWithImages.map((f, i) => ({
-            sceneNumber: i + 1,
+          frames: framesWithImages.map((f, i) => ({
+            frameNumber: i + 1,
+            imageUrl: f.imageUrl,
             prompt: f.prompt || f.description,
-            duration: f.duration || 3,
-            style: 'cinematic'
-          }))
+            duration: f.duration || 4
+          })),
+          sceneDescription: videoPrompt,
+          motionStrength: 'normal'
         })
       })
 
@@ -247,22 +247,32 @@ export function VideoStudio({
         setGenerationStep('Processing video...')
         setGenerationProgress(80)
         
-        if (data.videos?.[0]?.videoUrl) {
-          setGeneratedVideoUrl(data.videos[0].videoUrl)
+        // Check for clips (new format) or videos (old format)
+        const clips = data.clips || data.videos
+        const firstClipWithVideo = clips?.find((c: { videoUrl?: string }) => c.videoUrl)
+        
+        if (firstClipWithVideo?.videoUrl) {
+          setGeneratedVideoUrl(firstClipWithVideo.videoUrl)
           setPreviewMode('video')
-          onVideoGenerated?.(data.videos[0].videoUrl)
+          onVideoGenerated?.(firstClipWithVideo.videoUrl)
           
           setGenerationProgress(100)
           setGenerationStep('Complete!')
-          toast.success(data.mode === 'demo' ? 'Demo video ready!' : 'Video generated successfully!')
+          toast.success(data.mode === 'demo' ? 'Demo video ready!' : `Video generated! ${data.successCount || 1} clips created.`)
+        } else if (data.mode === 'error') {
+          // API configured but generation failed
+          setGenerationProgress(100)
+          setGenerationStep('Using slideshow mode')
+          toast.info(data.message || 'Video generation in progress. Using slideshow preview.')
         } else {
-          // Fallback to slideshow mode with demo video
+          // Fallback to slideshow mode
           setGenerationProgress(100)
           setGenerationStep('Complete!')
           toast.info('Using slideshow preview mode')
         }
       } else {
-        throw new Error('Video generation failed')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || 'Video generation failed')
       }
     } catch (error) {
       console.error('[VideoStudio] Error:', error)
