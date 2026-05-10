@@ -1,78 +1,109 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/utils/rateLimit'
-import Anthropic from '@anthropic-ai/sdk'
 
-// Scene element types
-interface Character {
-  id: string
-  name: string
-  description: string
-  age?: string
-  gender?: string
-  ethnicity?: string
-  hairStyle?: string
-  hairColor?: string
-  eyeColor?: string
-  build?: string
-  clothing?: string
-  accessories?: string
-  personality?: string
-  role: 'protagonist' | 'antagonist' | 'supporting' | 'background'
-}
-
-interface Vehicle {
-  id: string
-  type: string
-  make?: string
-  model?: string
-  color?: string
-  era?: string
-  condition?: string
-  description: string
-}
-
-interface Location {
-  id: string
-  name: string
-  type: string
-  timeOfDay?: string
-  weather?: string
-  era?: string
-  mood?: string
-  description: string
-  details?: string[]
-}
-
-interface Prop {
-  id: string
-  name: string
-  description: string
-  significance?: string
-}
-
-interface SceneElements {
-  characters: Character[]
-  vehicles: Vehicle[]
-  locations: Location[]
-  props: Prop[]
-  timeframe: string
-  genre: string
-  mood: string
-  visualStyle: string
-  colorPalette: string[]
-  cinematicReferences: string[]
+// Extract elements without AI using regex and keyword matching
+function extractWithoutAI(text: string) {
+  const lowerText = text.toLowerCase()
+  
+  // Extract character names (capitalized words followed by action verbs)
+  const characterPatterns = text.match(/\b([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\b(?=\s+(?:is|was|walks|runs|says|looks|stands|sits|enters|exits|holds|takes|gives|watches|sees|hears|feels|thinks|believes|knows|wants|needs|loves|hates|fears|hopes))/g) || []
+  const uniqueCharacters = [...new Set(characterPatterns)].slice(0, 4)
+  
+  // Detect genre
+  let genre = 'Drama'
+  if (/action|fight|chase|explosion|gun|battle/i.test(text)) genre = 'Action'
+  else if (/love|romance|kiss|heart|wedding/i.test(text)) genre = 'Romance'
+  else if (/scary|horror|ghost|monster|dark|terror/i.test(text)) genre = 'Horror'
+  else if (/funny|comedy|laugh|joke|humor/i.test(text)) genre = 'Comedy'
+  else if (/mystery|detective|crime|murder|investigate/i.test(text)) genre = 'Mystery'
+  else if (/space|future|robot|alien|technology/i.test(text)) genre = 'Sci-Fi'
+  
+  // Detect mood
+  let mood = 'Dramatic'
+  if (/happy|joy|celebrate|success|triumph/i.test(text)) mood = 'Uplifting'
+  else if (/sad|tragic|loss|death|grief/i.test(text)) mood = 'Melancholic'
+  else if (/tense|suspense|danger|threat|urgent/i.test(text)) mood = 'Tense'
+  else if (/mysterious|secret|hidden|unknown/i.test(text)) mood = 'Mysterious'
+  
+  // Detect time
+  let timeframe = 'Present Day'
+  if (/1800|1900|victorian|medieval|ancient|historical/i.test(text)) timeframe = 'Historical'
+  else if (/future|2100|dystopia|utopia/i.test(text)) timeframe = 'Future'
+  else if (/1950|1960|1970|1980|1990|retro/i.test(text)) timeframe = 'Mid-20th Century'
+  
+  // Extract locations from common location words
+  const locationPatterns = text.match(/(?:in|at|inside|outside|near|by)\s+(?:the\s+)?([A-Za-z]+(?:\s+[A-Za-z]+)?)/gi) || []
+  const locations = locationPatterns.map(l => l.replace(/^(?:in|at|inside|outside|near|by)\s+(?:the\s+)?/i, '')).slice(0, 2)
+  
+  // Extract vehicles
+  const vehiclePatterns = text.match(/\b(car|truck|motorcycle|bike|helicopter|plane|ship|boat|taxi|bus|train|spaceship)\b/gi) || []
+  const vehicles = [...new Set(vehiclePatterns)].slice(0, 2)
+  
+  // Color palette based on mood
+  const colorPalettes: Record<string, string[]> = {
+    'Uplifting': ['#FFD700', '#87CEEB', '#98FB98', '#FFA07A', '#DDA0DD'],
+    'Melancholic': ['#4A5568', '#2D3748', '#718096', '#A0AEC0', '#1A202C'],
+    'Tense': ['#8B0000', '#2F2F2F', '#4A4A4A', '#DC143C', '#1A1A2E'],
+    'Mysterious': ['#1A1A2E', '#16213E', '#0F3460', '#E94560', '#533483'],
+    'Dramatic': ['#2C3E50', '#E74C3C', '#F39C12', '#1ABC9C', '#9B59B6']
+  }
+  
+  return {
+    characters: uniqueCharacters.map((name, i) => ({
+      id: `char_${i + 1}`,
+      name,
+      description: `${name} is a key character in this ${genre.toLowerCase()} story.`,
+      role: i === 0 ? 'protagonist' : i === 1 ? 'supporting' : 'background',
+      clothing: 'Appropriate attire for the setting',
+      personality: 'Complex and multidimensional'
+    })),
+    vehicles: vehicles.map((v, i) => ({
+      id: `veh_${i + 1}`,
+      type: v,
+      description: `A ${v} featured in the scene`,
+      color: 'Contextually appropriate',
+      condition: 'Good'
+    })),
+    locations: locations.length > 0 ? locations.map((loc, i) => ({
+      id: `loc_${i + 1}`,
+      name: loc,
+      type: 'exterior',
+      description: `${loc} - a key location in the story`,
+      timeOfDay: 'day',
+      mood: mood.toLowerCase()
+    })) : [{
+      id: 'loc_1',
+      name: 'Primary Location',
+      type: 'mixed',
+      description: 'The main setting of the scene',
+      timeOfDay: 'day',
+      mood: mood.toLowerCase()
+    }],
+    props: [{
+      id: 'prop_1',
+      name: 'Key Object',
+      description: 'An important object in the scene',
+      significance: 'Plot relevant'
+    }],
+    genre,
+    mood,
+    visualStyle: `${genre} with ${mood.toLowerCase()} undertones`,
+    colorPalette: colorPalettes[mood] || colorPalettes['Dramatic'],
+    cinematicReferences: genre === 'Action' ? ['Mad Max', 'John Wick'] 
+      : genre === 'Romance' ? ['La La Land', 'The Notebook']
+      : genre === 'Horror' ? ['The Shining', 'Hereditary']
+      : genre === 'Sci-Fi' ? ['Blade Runner', 'Interstellar']
+      : ['The Godfather', 'Inception'],
+    timeframe
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    // Rate limiting
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
     const rateLimitResult = checkRateLimit(ip, 'analyze')
     if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        { error: `Rate limit exceeded. Wait ${Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)} seconds.` },
-        { status: 429 }
-      )
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
     }
 
     const { prompt, enhancedPrompt } = await req.json()
@@ -82,113 +113,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Prompt required' }, { status: 400 })
     }
 
-    // Check for Anthropic API key
-    const anthropicKey = process.env.ANTHROPIC_API_KEY
     const groqKey = process.env.GROQ_API_KEY
 
-    if (!anthropicKey && !groqKey) {
+    // If no API key, use pattern matching
+    if (!groqKey) {
+      const elements = extractWithoutAI(textToAnalyze)
       return NextResponse.json({
-        error: 'No AI API configured. Add ANTHROPIC_API_KEY or GROQ_API_KEY in Settings > Vars.',
-        elements: null
-      }, { status: 500 })
-    }
-
-    let elements: SceneElements | null = null
-
-    const systemPrompt = `You are a professional film pre-production AI assistant with 25+ years of experience in Hollywood. Your job is to analyze a film concept/prompt and extract all visual elements needed for production.
-
-Extract and return a JSON object with these exact fields:
-{
-  "characters": [
-    {
-      "id": "char_1",
-      "name": "Character name or description",
-      "description": "Full visual description for AI image generation",
-      "age": "Age range",
-      "gender": "Gender",
-      "ethnicity": "Ethnicity/skin tone",
-      "hairStyle": "Hair style description",
-      "hairColor": "Hair color",
-      "eyeColor": "Eye color",
-      "build": "Body type/build",
-      "clothing": "Detailed clothing description",
-      "accessories": "Jewelry, glasses, etc.",
-      "personality": "Brief personality for expression reference",
-      "role": "protagonist|antagonist|supporting|background"
-    }
-  ],
-  "vehicles": [
-    {
-      "id": "veh_1",
-      "type": "car|motorcycle|spaceship|etc",
-      "make": "Make if applicable",
-      "model": "Model if applicable",
-      "color": "Color",
-      "era": "Time period",
-      "condition": "new|vintage|damaged|etc",
-      "description": "Full visual description"
-    }
-  ],
-  "locations": [
-    {
-      "id": "loc_1",
-      "name": "Location name",
-      "type": "interior|exterior|mixed",
-      "timeOfDay": "dawn|morning|afternoon|evening|night|etc",
-      "weather": "Weather conditions",
-      "era": "Time period",
-      "mood": "Atmospheric mood",
-      "description": "Full visual description",
-      "details": ["Specific set dressing details"]
-    }
-  ],
-  "props": [
-    {
-      "id": "prop_1",
-      "name": "Prop name",
-      "description": "Visual description",
-      "significance": "Narrative importance"
-    }
-  ],
-  "timeframe": "Time period of the story",
-  "genre": "Primary genre",
-  "mood": "Overall mood/tone",
-  "visualStyle": "Visual/cinematographic style reference",
-  "colorPalette": ["Primary colors for the film's look"],
-  "cinematicReferences": ["Similar films for visual reference"]
-}
-
-Be extremely detailed in descriptions - these will be used for AI image generation. Include specific details about lighting, textures, materials, and visual qualities. If something is not mentioned in the prompt, use your expertise to fill in appropriate details that match the genre and mood.`
-
-    if (anthropicKey) {
-      const anthropic = new Anthropic({ apiKey: anthropicKey })
-      
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        system: systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: `Analyze this film concept and extract all visual elements:\n\n${textToAnalyze}`
-          }
-        ]
+        elements,
+        message: `Extracted ${elements.characters.length} characters, ${elements.locations.length} locations`,
+        success: true,
+        mode: 'basic'
       })
+    }
 
-      const content = response.content[0]
-      if (content.type === 'text') {
-        try {
-          // Extract JSON from response
-          const jsonMatch = content.text.match(/\{[\s\S]*\}/)
-          if (jsonMatch) {
-            elements = JSON.parse(jsonMatch[0])
-          }
-        } catch (parseError) {
-          console.error('[extract-elements] JSON parse error:', parseError)
-        }
-      }
-    } else if (groqKey) {
-      // Fallback to Groq
+    // Try AI extraction
+    try {
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -196,49 +135,65 @@ Be extremely detailed in descriptions - these will be used for AI image generati
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
+          model: 'llama-3.1-8b-instant',
           messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Analyze this film concept and extract all visual elements:\n\n${textToAnalyze}` }
+            { 
+              role: 'system', 
+              content: `Extract film elements as JSON:
+{
+  "characters": [{"id": "char_1", "name": "string", "description": "visual description", "role": "protagonist|antagonist|supporting", "clothing": "string"}],
+  "vehicles": [{"id": "veh_1", "type": "string", "description": "string", "color": "string"}],
+  "locations": [{"id": "loc_1", "name": "string", "type": "interior|exterior", "description": "string", "timeOfDay": "string", "mood": "string"}],
+  "props": [{"id": "prop_1", "name": "string", "description": "string"}],
+  "genre": "string",
+  "mood": "string", 
+  "visualStyle": "string",
+  "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"],
+  "cinematicReferences": ["film1", "film2"],
+  "timeframe": "string"
+}
+Be detailed for AI image generation. Return ONLY valid JSON.`
+            },
+            { role: 'user', content: `Extract elements from: ${textToAnalyze}` }
           ],
-          max_tokens: 4000,
-          temperature: 0.7,
+          max_tokens: 3000,
+          temperature: 0.5,
         }),
       })
 
       if (response.ok) {
         const data = await response.json()
         const text = data.choices?.[0]?.message?.content || ''
-        try {
-          const jsonMatch = text.match(/\{[\s\S]*\}/)
-          if (jsonMatch) {
-            elements = JSON.parse(jsonMatch[0])
-          }
-        } catch (parseError) {
-          console.error('[extract-elements] JSON parse error:', parseError)
+        const jsonMatch = text.match(/\{[\s\S]*\}/)
+        
+        if (jsonMatch) {
+          const elements = JSON.parse(jsonMatch[0])
+          return NextResponse.json({
+            elements,
+            message: `Extracted ${elements.characters?.length || 0} characters, ${elements.locations?.length || 0} locations`,
+            success: true
+          })
         }
       }
+    } catch (e) {
+      console.error('[extract] AI error:', e)
     }
 
-    if (!elements) {
-      return NextResponse.json({
-        error: 'Failed to extract scene elements',
-        elements: null
-      }, { status: 500 })
-    }
-
+    // Fallback to pattern matching
+    const elements = extractWithoutAI(textToAnalyze)
     return NextResponse.json({
       elements,
-      message: `Extracted ${elements.characters?.length || 0} characters, ${elements.locations?.length || 0} locations, ${elements.vehicles?.length || 0} vehicles, ${elements.props?.length || 0} props`,
-      success: true
+      message: `Extracted ${elements.characters.length} characters, ${elements.locations.length} locations`,
+      success: true,
+      mode: 'fallback'
     })
 
   } catch (err) {
-    console.error('[extract-elements] error:', err instanceof Error ? err.message : 'unknown')
+    console.error('[extract] error:', err)
     return NextResponse.json({
-      error: 'Element extraction failed',
-      message: err instanceof Error ? err.message : 'Unknown error',
-      elements: null
+      error: 'Extraction failed',
+      elements: extractWithoutAI('A dramatic scene unfolds'),
+      success: false
     }, { status: 500 })
   }
 }

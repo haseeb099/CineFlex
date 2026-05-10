@@ -1,31 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateText } from 'ai'
-import { createGroq } from '@ai-sdk/groq'
 import { sanitizeInput } from '@/lib/utils/sanitize'
 import { checkRateLimit } from '@/lib/utils/rateLimit'
 
-const ENHANCE_PROMPT_SYSTEM = `You are an expert screenwriter. Transform raw ideas into richly detailed, cinematic scene descriptions.
-
-RULES:
-1. Add sensory details (visuals, sounds, lighting)
-2. Clarify character emotions and motivations
-3. Include time of day, atmosphere
-4. Add dramatic tension
-5. Keep the core idea intact
-6. Output 2-3 paragraphs max
-
-Return ONLY the enhanced scene, no commentary.`
-
-const SPLIT_SCENES_SYSTEM = `Analyze if text contains multiple scenes (location change, time jump, different focus).
-
-Return JSON:
-{
-  "shouldSplit": boolean,
-  "sceneCount": number,
-  "scenes": [{"title": "string", "content": "string", "suggestedOrder": number}]
+// Simple enhancement without AI - adds cinematic details
+function enhanceWithoutAI(prompt: string): string {
+  const additions = [
+    'The scene opens with dramatic lighting casting long shadows.',
+    'The atmosphere is tense and cinematic.',
+    'Every detail is carefully composed for visual impact.',
+    'The camera captures the moment with precision and artistry.'
+  ]
+  
+  let enhanced = prompt.trim()
+  
+  // Add time of day if not present
+  if (!/(morning|afternoon|evening|night|dawn|dusk|sunset|sunrise)/i.test(enhanced)) {
+    enhanced += ' The scene takes place during golden hour, with warm light filtering through.'
+  }
+  
+  // Add atmosphere
+  if (!/(atmosphere|mood|feeling|tone)/i.test(enhanced)) {
+    enhanced += ' ' + additions[Math.floor(Math.random() * additions.length)]
+  }
+  
+  // Add visual details
+  enhanced += ' The cinematography emphasizes depth and emotion, with careful attention to composition and color grading.'
+  
+  return enhanced
 }
 
-Max 4 scenes. No markdown, just JSON.`
+// Split scenes without AI
+function splitWithoutAI(text: string): { shouldSplit: boolean; sceneCount: number; scenes: Array<{ title: string; content: string; suggestedOrder: number }> } {
+  // Simple split by paragraphs or scene markers
+  const markers = /\n\n|\n---\n|scene \d|chapter \d|part \d|act \d/gi
+  const parts = text.split(markers).filter(p => p.trim().length > 50)
+  
+  if (parts.length <= 1) {
+    return {
+      shouldSplit: false,
+      sceneCount: 1,
+      scenes: [{ title: 'Scene 1', content: text, suggestedOrder: 1 }]
+    }
+  }
+  
+  return {
+    shouldSplit: true,
+    sceneCount: Math.min(parts.length, 4),
+    scenes: parts.slice(0, 4).map((content, i) => ({
+      title: `Scene ${i + 1}`,
+      content: content.trim(),
+      suggestedOrder: i + 1
+    }))
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,13 +66,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!process.env.GROQ_API_KEY) {
-      return NextResponse.json(
-        { error: 'API not configured. Add GROQ_API_KEY to environment variables in Settings > Vars.' },
-        { status: 500 }
-      )
-    }
-
     const body = await request.json()
     const { prompt, mode = 'enhance' } = body
 
@@ -54,70 +74,115 @@ export async function POST(request: NextRequest) {
     }
 
     const sanitizedPrompt = sanitizeInput(prompt, 5000)
-    const groq = createGroq({ apiKey: process.env.GROQ_API_KEY })
+    const groqKey = process.env.GROQ_API_KEY
 
+    // Handle split mode
     if (mode === 'split') {
-      try {
-        const { text: splitAnalysis } = await generateText({
-          model: groq('llama-3.3-70b-versatile'),
-          system: SPLIT_SCENES_SYSTEM,
-          prompt: sanitizedPrompt,
-          temperature: 0.3,
-          maxTokens: 2000,
-        })
-
-        const jsonMatch = splitAnalysis.match(/\{[\s\S]*\}/)
-        if (jsonMatch) {
-          return NextResponse.json(JSON.parse(jsonMatch[0]))
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : ''
-        if (msg.includes('rate_limit') || msg.includes('Rate limit')) {
-          return NextResponse.json(
-            { error: 'API rate limit reached. Please wait and try again.' },
-            { status: 429 }
-          )
-        }
+      if (!groqKey) {
+        return NextResponse.json(splitWithoutAI(sanitizedPrompt))
       }
       
-      // Fallback - don't split
-      return NextResponse.json({
-        shouldSplit: false,
-        sceneCount: 1,
-        scenes: [{ title: 'Scene 1', content: sanitizedPrompt, suggestedOrder: 1 }]
-      })
+      try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${groqKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'llama-3.1-8b-instant',
+            messages: [
+              { 
+                role: 'system', 
+                content: 'Analyze if text contains multiple scenes. Return JSON: {"shouldSplit": boolean, "sceneCount": number, "scenes": [{"title": "string", "content": "string", "suggestedOrder": number}]}. Max 4 scenes. No markdown.'
+              },
+              { role: 'user', content: sanitizedPrompt }
+            ],
+            max_tokens: 2000,
+            temperature: 0.3,
+          }),
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          const text = data.choices?.[0]?.message?.content || ''
+          const jsonMatch = text.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            return NextResponse.json(JSON.parse(jsonMatch[0]))
+          }
+        }
+      } catch (e) {
+        console.error('[enhance] Split error:', e)
+      }
+      
+      return NextResponse.json(splitWithoutAI(sanitizedPrompt))
     }
 
-    // Standard enhancement
-    try {
-      const { text: enhanced } = await generateText({
-        model: groq('llama-3.3-70b-versatile'),
-        system: ENHANCE_PROMPT_SYSTEM,
-        prompt: `Enhance: ${sanitizedPrompt}`,
-        temperature: 0.7,
-        maxTokens: 1500,
-      })
-
+    // Handle enhance mode
+    if (!groqKey) {
+      // No API key - use simple enhancement
+      const enhanced = enhanceWithoutAI(sanitizedPrompt)
       return NextResponse.json({
         enhanced,
         originalLength: prompt.length,
         enhancedLength: enhanced.length,
+        mode: 'basic'
       })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : ''
-      if (msg.includes('rate_limit') || msg.includes('Rate limit')) {
-        return NextResponse.json(
-          { error: 'API rate limit reached. Please wait a few minutes and try again.' },
-          { status: 429 }
-        )
+    }
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { 
+              role: 'system', 
+              content: 'You are an expert screenwriter. Transform raw ideas into richly detailed, cinematic scene descriptions. Add sensory details, emotions, atmosphere. Keep core idea. Output 2-3 paragraphs max. Return ONLY the enhanced scene.'
+            },
+            { role: 'user', content: `Enhance this scene: ${sanitizedPrompt}` }
+          ],
+          max_tokens: 1500,
+          temperature: 0.7,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const enhanced = data.choices?.[0]?.message?.content || enhanceWithoutAI(sanitizedPrompt)
+        
+        return NextResponse.json({
+          enhanced,
+          originalLength: prompt.length,
+          enhancedLength: enhanced.length,
+        })
+      } else {
+        // API error - use fallback
+        return NextResponse.json({
+          enhanced: enhanceWithoutAI(sanitizedPrompt),
+          originalLength: prompt.length,
+          enhancedLength: enhanceWithoutAI(sanitizedPrompt).length,
+          mode: 'fallback'
+        })
       }
-      throw err
+    } catch (err) {
+      console.error('[enhance] Error:', err)
+      return NextResponse.json({
+        enhanced: enhanceWithoutAI(sanitizedPrompt),
+        originalLength: prompt.length,
+        enhancedLength: enhanceWithoutAI(sanitizedPrompt).length,
+        mode: 'fallback'
+      })
     }
 
   } catch (error) {
-    console.error('Enhance prompt error:', error)
+    console.error('[enhance] Error:', error)
     return NextResponse.json(
-      { error: 'Failed to enhance prompt. Please try again.' },
+      { error: 'Failed to enhance prompt' },
       { status: 500 }
     )
   }

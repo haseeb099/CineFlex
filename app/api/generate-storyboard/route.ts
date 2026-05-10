@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/utils/rateLimit'
+import { runware } from '@runware/ai-sdk-provider'
+import { experimental_generateImage as generateImage } from 'ai'
 
 interface FramePrompt {
   id?: string
@@ -10,7 +12,6 @@ interface FramePrompt {
   description?: string
 }
 
-// Cinematic shot descriptions
 const SHOT_DESCRIPTIONS: Record<string, string> = {
   'ECU': 'extreme close-up, macro detail',
   'CU': 'close-up, face filling frame',
@@ -45,7 +46,7 @@ function buildCinematicPrompt(fp: FramePrompt, characterLooks?: string, settingD
   if (characterLooks) prompt += `. Characters: ${characterLooks}`
   if (settingDetails) prompt += `. Setting: ${settingDetails}`
   
-  prompt += '. Dramatic lighting, high production value, 35mm film, photorealistic, movie quality.'
+  prompt += '. Dramatic lighting, high production value, 35mm film, photorealistic, movie quality, 8k.'
   
   return prompt
 }
@@ -64,19 +65,61 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Frame prompts required' }, { status: 400 })
     }
 
-    console.log('[storyboard] Generating', framePrompts.length, 'frames with Pollinations.ai (FREE)')
-
+    const runwareKey = process.env.RUNWARE_API_KEY
     const generatedFrames = []
+    let apiUsed = 'pollinations'
+
+    console.log('[storyboard] Starting generation for', framePrompts.length, 'frames')
+    console.log('[storyboard] Runware key:', runwareKey ? 'configured' : 'NOT SET')
 
     for (const fp of framePrompts as FramePrompt[]) {
       const cinematicPrompt = buildCinematicPrompt(fp, characterLooks, settingDetails)
-      
-      // Use Pollinations.ai - FREE, no API key, instant URLs
-      const encodedPrompt = encodeURIComponent(cinematicPrompt.slice(0, 800))
-      const seed = Math.floor(Math.random() * 1000000) + fp.frameNumber
-      const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&seed=${seed}&nologo=true&model=flux`
-      
-      console.log(`[storyboard] Frame ${fp.frameNumber}: Generated Pollinations URL`)
+      let imageUrl: string | null = null
+
+      // Try Runware SDK first
+      if (runwareKey) {
+        try {
+          console.log(`[storyboard] Frame ${fp.frameNumber}: Using Runware SDK...`)
+          
+          const { image } = await generateImage({
+            model: runware.image('runware:100@1'), // FLUX.1 Schnell - fast
+            prompt: cinematicPrompt,
+            size: '1024x576' as `${number}x${number}`,
+            providerOptions: {
+              runware: {
+                steps: 4,
+                CFGScale: 7.5,
+                outputFormat: 'WEBP',
+              },
+            },
+          })
+
+          // The SDK returns image data - extract URL or base64
+          if (image) {
+            if ('base64' in image && image.base64) {
+              imageUrl = `data:image/webp;base64,${image.base64}`
+              apiUsed = 'runware'
+              console.log(`[storyboard] Frame ${fp.frameNumber}: Runware SUCCESS (base64)`)
+            } else if ('uint8Array' in image && image.uint8Array) {
+              const base64 = Buffer.from(image.uint8Array).toString('base64')
+              imageUrl = `data:image/webp;base64,${base64}`
+              apiUsed = 'runware'
+              console.log(`[storyboard] Frame ${fp.frameNumber}: Runware SUCCESS (uint8Array)`)
+            }
+          }
+        } catch (err) {
+          console.error(`[storyboard] Frame ${fp.frameNumber}: Runware error:`, err instanceof Error ? err.message : err)
+        }
+      }
+
+      // Fallback to Pollinations.ai (FREE, always works)
+      if (!imageUrl) {
+        console.log(`[storyboard] Frame ${fp.frameNumber}: Using Pollinations fallback`)
+        const encodedPrompt = encodeURIComponent(cinematicPrompt.slice(0, 800))
+        const seed = Math.floor(Math.random() * 1000000) + fp.frameNumber
+        imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&seed=${seed}&nologo=true&model=flux`
+        apiUsed = 'pollinations'
+      }
 
       generatedFrames.push({
         id: fp.id || `frame-${fp.frameNumber}-${Date.now()}`,
@@ -88,11 +131,10 @@ export async function POST(req: NextRequest) {
         cameraMove: fp.cameraMove || 'STATIC',
         description: fp.description || fp.prompt || '',
         status: 'done',
-        mode: 'pollinations'
       })
     }
 
-    console.log('[storyboard] All frames generated successfully')
+    console.log('[storyboard] Generation complete:', generatedFrames.length, 'frames using', apiUsed)
     
     return NextResponse.json({ 
       frames: generatedFrames, 
@@ -100,7 +142,7 @@ export async function POST(req: NextRequest) {
       successCount: generatedFrames.length,
       totalCount: generatedFrames.length,
       message: `Generated ${generatedFrames.length} frames`,
-      apiUsed: 'pollinations (free)'
+      apiUsed
     })
 
   } catch (err) {
