@@ -22,7 +22,8 @@ import {
   FileDown,
   Archive,
   Film,
-  Mic
+  Mic,
+  Users
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -36,6 +37,8 @@ import { StoryboardEditor } from '@/components/workspace/StoryboardEditor'
 import { VideoStudio } from '@/components/workspace/VideoStudio'
 import { AudioStudio } from '@/components/workspace/AudioStudio'
 import { FinalExport } from '@/components/workspace/FinalExport'
+import { ConceptEditor } from '@/components/workspace/ConceptEditor'
+import { AutoPipeline } from '@/components/workspace/AutoPipeline'
 import { ShotList, ShotListCompact } from '@/components/workspace/ShotList'
 import { ScenesEmptyState } from '@/components/shared/EmptyState'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
@@ -87,6 +90,20 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
   const [isExporting, setIsExporting] = useState(false)
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null)
   const [voiceoverUrl, setVoiceoverUrl] = useState<string | null>(null)
+  const [sceneElements, setSceneElements] = useState<{
+    characters: Array<{ id: string; name: string; description: string; role: 'protagonist' | 'antagonist' | 'supporting' | 'background'; [key: string]: unknown }>
+    vehicles: Array<{ id: string; type: string; description: string; [key: string]: unknown }>
+    locations: Array<{ id: string; name: string; type: string; description: string; [key: string]: unknown }>
+    props: Array<{ id: string; name: string; description: string; [key: string]: unknown }>
+    genre: string
+    mood: string
+    visualStyle: string
+    colorPalette: string[]
+    cinematicReferences: string[]
+    timeframe: string
+  } | null>(null)
+  const [isExtractingElements, setIsExtractingElements] = useState(false)
+  const [generatedAudioMood, setGeneratedAudioMood] = useState<AudioMood | null>(null)
 
   // Get project after mounted to avoid hydration mismatch
   const project = mounted ? getProject(id) : null
@@ -216,6 +233,62 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     toast.success('Scene deleted')
   }
 
+  // Extract scene elements (characters, locations, vehicles, props)
+  const handleExtractElements = async () => {
+    if (!analysisResult?.refinedScene) return
+    
+    setIsExtractingElements(true)
+    try {
+      const response = await fetch('/api/extract-elements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: sceneInput,
+          enhancedPrompt: analysisResult.refinedScene
+        })
+      })
+
+      if (!response.ok) throw new Error('Element extraction failed')
+
+      const { elements } = await response.json()
+      setSceneElements(elements)
+      toast.success('Scene elements extracted!')
+    } catch (error) {
+      toast.error('Failed to extract elements')
+    } finally {
+      setIsExtractingElements(false)
+    }
+  }
+
+  // Generate AI preview for a concept (character, vehicle, location)
+  const handleGenerateConceptPreview = async (
+    type: string, 
+    item: { description: string; [key: string]: unknown }
+  ): Promise<string | null> => {
+    // Build prompt based on type
+    let prompt = ''
+    
+    if (type === 'character') {
+      const char = item as { name?: string; description: string; clothing?: string; hairStyle?: string; hairColor?: string }
+      prompt = `Professional character portrait, cinematic lighting, film still: ${char.description}. ${char.clothing || ''}. Hair: ${char.hairStyle || ''} ${char.hairColor || ''}. Photorealistic, high detail, movie quality.`
+    } else if (type === 'vehicle') {
+      const veh = item as { type?: string; description: string; color?: string; make?: string; model?: string }
+      prompt = `Cinematic shot of ${veh.make || ''} ${veh.model || ''} ${veh.type || 'vehicle'}, ${veh.color || ''}: ${veh.description}. Professional automotive photography, dramatic lighting, film quality.`
+    } else if (type === 'location') {
+      const loc = item as { name?: string; description: string; timeOfDay?: string; weather?: string; mood?: string }
+      prompt = `Cinematic establishing shot, ${loc.timeOfDay || 'day'}, ${loc.weather || ''}: ${loc.description}. ${loc.mood || ''} atmosphere. Wide angle, professional cinematography, film quality.`
+    } else {
+      prompt = `Cinematic product shot: ${item.description}. Professional lighting, high detail, film quality prop photography.`
+    }
+
+    // Generate directly via Pollinations.ai - FREE, no API needed, always works
+    const encodedPrompt = encodeURIComponent(prompt.slice(0, 800))
+    const seed = Math.floor(Math.random() * 1000000)
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&seed=${seed}&nologo=true&model=flux`
+    
+    return imageUrl
+  }
+
   const handleAnalyze = async () => {
     if (!currentSceneId || sceneInput.trim().length < 10) {
       toast.error('Please enter at least 10 characters')
@@ -278,23 +351,56 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
 
     setGeneratingStoryboard(true)
     
+    // Build character and setting details from sceneElements if available
+    let characterLooks = ''
+    let settingDetails = ''
+    
+    if (sceneElements) {
+      // Combine character descriptions for consistent look
+      characterLooks = sceneElements.characters
+        .map(c => `${c.name}: ${c.description}. ${c.clothing || ''}`)
+        .join('. ')
+      
+      // Combine location and visual style info
+      settingDetails = [
+        sceneElements.visualStyle,
+        sceneElements.mood,
+        sceneElements.locations.map(l => l.description).join('. '),
+        `Color palette: ${sceneElements.colorPalette?.join(', ') || ''}`
+      ].filter(Boolean).join('. ')
+    }
+
+    // Set frames to generating state
+    const generatingFrames: StoryboardFrame[] = analysisResult.storyboardFramePrompts.map(f => ({
+      ...f,
+      status: 'generating' as const
+    }))
+    setAnalysisResult({ ...analysisResult, storyboardFramePrompts: generatingFrames })
+    
     try {
       const response = await fetch('/api/generate-storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          framePrompts: analysisResult.storyboardFramePrompts
+          framePrompts: analysisResult.storyboardFramePrompts,
+          characterLooks,
+          settingDetails
         })
       })
 
-      if (!response.ok) throw new Error('Storyboard generation failed')
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Storyboard generation failed')
+      }
 
-      const { frames } = await response.json()
+      const { frames, mode, message, successCount } = data
       
       const updatedFrames: StoryboardFrame[] = analysisResult.storyboardFramePrompts.map((f, i) => ({
         ...f,
         imageUrl: frames[i]?.imageUrl || f.imageUrl,
-        status: 'done' as const
+        status: frames[i]?.imageUrl ? 'done' as const : 'error' as const,
+        cinematicPrompt: frames[i]?.cinematicPrompt
       }))
 
       setAnalysisResult({
@@ -308,9 +414,22 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
         })
       }
 
-      toast.success('Storyboard generated!')
+      if (mode === 'error') {
+        toast.error(message || 'Image generation failed. Check API keys.')
+      } else if (successCount && successCount > 0) {
+        toast.success(`Generated ${successCount}/${frames.length} storyboard frames!`)
+      } else {
+        toast.success('Storyboard generated!')
+      }
     } catch (error) {
-      toast.error('Storyboard generation failed')
+      console.error('[v0] Storyboard generation error:', error)
+      // Reset to pending state on error
+      const errorFrames: StoryboardFrame[] = analysisResult.storyboardFramePrompts.map(f => ({
+        ...f,
+        status: 'error' as const
+      }))
+      setAnalysisResult({ ...analysisResult, storyboardFramePrompts: errorFrames })
+      toast.error(error instanceof Error ? error.message : 'Storyboard generation failed')
     } finally {
       setGeneratingStoryboard(false)
     }
@@ -322,21 +441,54 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     const frame = analysisResult.storyboardFramePrompts.find(f => f.id === frameId)
     if (!frame) return
 
+    // Set frame to generating state
+    const generatingFrames = analysisResult.storyboardFramePrompts.map(f => 
+      f.id === frameId ? { ...f, status: 'generating' as const } : f
+    )
+    setAnalysisResult({ ...analysisResult, storyboardFramePrompts: generatingFrames })
+
+    // Build context from scene elements
+    let characterLooks = ''
+    let settingDetails = ''
+    if (sceneElements) {
+      characterLooks = sceneElements.characters
+        .map(c => `${c.name}: ${c.description}. ${c.clothing || ''}`)
+        .join('. ')
+      settingDetails = [
+        sceneElements.visualStyle,
+        sceneElements.mood,
+        sceneElements.locations.map(l => l.description).join('. ')
+      ].filter(Boolean).join('. ')
+    }
+
     try {
       const response = await fetch('/api/generate-storyboard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          framePrompts: [frame]
+          framePrompts: [frame],
+          characterLooks,
+          settingDetails
         })
       })
 
-      if (!response.ok) throw new Error('Frame regeneration failed')
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Frame regeneration failed')
+      }
 
-      const { frames } = await response.json()
+      const { frames } = data
       
       const updatedFrames = analysisResult.storyboardFramePrompts.map(f => 
-        f.id === frameId ? { ...f, imageUrl: frames[0]?.imageUrl || f.imageUrl, status: 'done' as const } : f
+        f.id === frameId 
+          ? { 
+              ...f, 
+              imageUrl: frames[0]?.imageUrl || f.imageUrl, 
+              status: frames[0]?.imageUrl ? 'done' as const : 'error' as const,
+              cinematicPrompt: frames[0]?.cinematicPrompt
+            } 
+          : f
       )
 
       setAnalysisResult({
@@ -350,9 +502,18 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
         })
       }
 
-      toast.success('Frame regenerated!')
+      if (frames[0]?.imageUrl) {
+        toast.success('Frame regenerated!')
+      } else {
+        toast.error('Frame generation failed - check API keys')
+      }
     } catch (error) {
-      toast.error('Frame regeneration failed')
+      // Reset to error state
+      const errorFrames = analysisResult.storyboardFramePrompts.map(f => 
+        f.id === frameId ? { ...f, status: 'error' as const } : f
+      )
+      setAnalysisResult({ ...analysisResult, storyboardFramePrompts: errorFrames })
+      toast.error(error instanceof Error ? error.message : 'Frame regeneration failed')
     }
   }
 
@@ -371,12 +532,13 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     }
   }
 
-  const handleAudioGenerated = (audioMood: AudioMood) => {
-    if (!analysisResult) return
-
-    setAnalysisResult({
-      ...analysisResult,
-      audioMood
+const handleAudioGenerated = (audioMood: AudioMood) => {
+  setGeneratedAudioMood(audioMood)
+  if (!analysisResult) return
+  
+  setAnalysisResult({
+  ...analysisResult,
+  audioMood
     })
 
     if (currentSceneId) {
@@ -488,6 +650,14 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                       Review
                     </TabsTrigger>
                     <TabsTrigger
+                      value="concept"
+                      disabled={!analysisResult}
+                      className="gap-2 data-[state=active]:bg-[#a855f7]/20 data-[state=active]:text-[#a855f7]"
+                    >
+                      <Users className="w-4 h-4" />
+                      Concept
+                    </TabsTrigger>
+                    <TabsTrigger
                       value="storyboard"
                       disabled={!analysisResult}
                       className="gap-2 data-[state=active]:bg-[#c084fc]/20"
@@ -496,20 +666,20 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                       Storyboard
                     </TabsTrigger>
                     <TabsTrigger
-                      value="video"
-                      disabled={!analysisResult}
-                      className="gap-2 data-[state=active]:bg-[#4ade80]/20 data-[state=active]:text-[#4ade80]"
-                    >
-                      <Video className="w-4 h-4" />
-                      Video
-                    </TabsTrigger>
-                    <TabsTrigger
                       value="audio"
                       disabled={!analysisResult}
                       className="gap-2 data-[state=active]:bg-[#f59e0b]/20 data-[state=active]:text-[#f59e0b]"
                     >
                       <Music className="w-4 h-4" />
                       Audio
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="video"
+                      disabled={!analysisResult}
+                      className="gap-2 data-[state=active]:bg-[#4ade80]/20 data-[state=active]:text-[#4ade80]"
+                    >
+                      <Video className="w-4 h-4" />
+                      Video
                     </TabsTrigger>
                     <TabsTrigger
                       value="export"
@@ -549,6 +719,30 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                           isAnalyzing={isAnalyzing}
                           onSplitScenes={handleSplitScenes}
                         />
+
+                        {/* Auto-Generate Pipeline - One-Click Video Generation */}
+                        {sceneInput.trim().length > 20 && !isAnalyzing && (
+                          <div className="mt-6">
+                            <AutoPipeline
+                              prompt={sceneInput}
+                              enhancedPrompt={analysisResult?.refinedScene}
+                              onEnhance={handleAnalyze}
+                              onExtractElements={handleExtractElements}
+                              onGenerateStoryboard={handleGenerateStoryboard}
+                              onGenerateAudio={async () => {
+                                // This will be handled by AudioStudio auto-generate
+                                toast.info('Audio generation started...')
+                              }}
+                              onGenerateVideo={async () => {
+                                toast.info('Video generation started...')
+                              }}
+                              hasStoryboard={analysisResult?.storyboardFramePrompts?.some(f => f.imageUrl) || false}
+                              hasAudio={Boolean(generatedAudioMood)}
+                              hasVideo={Boolean(generatedVideoUrl)}
+                              isAnalyzed={Boolean(analysisResult)}
+                            />
+                          </div>
+                        )}
 
                         {isAnalyzing && (
                           <motion.div
@@ -608,6 +802,69 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                               Re-analyze
                             </Button>
                             <Button
+                              onClick={() => setActiveTab('concept')}
+                              className="gap-2 bg-[#a855f7] hover:bg-[#9333ea] text-white"
+                            >
+                              <Users className="w-4 h-4" />
+                              Design Concepts
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </TabsContent>
+
+                    {/* CONCEPT TAB */}
+                    <TabsContent value="concept" className="mt-0 data-[state=inactive]:hidden">
+                      {analysisResult && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="space-y-6"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h2 className="text-lg font-semibold text-white mb-1">
+                                Visual Concept Design
+                              </h2>
+                              <p className="text-sm text-[#52526b]">
+                                Define characters, locations, vehicles, and props. Generate AI previews to visualize your concepts.
+                              </p>
+                            </div>
+                            {!sceneElements && (
+                              <Button
+                                onClick={handleExtractElements}
+                                disabled={isExtractingElements}
+                                className="gap-2 bg-[#a855f7] hover:bg-[#9333ea] text-white"
+                              >
+                                {isExtractingElements ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Wand2 className="w-4 h-4" />
+                                )}
+                                Extract Elements
+                              </Button>
+                            )}
+                          </div>
+
+                          <ConceptEditor
+                            elements={sceneElements}
+                            onElementsChange={setSceneElements}
+                            onGeneratePreview={handleGenerateConceptPreview}
+                            isLoading={isExtractingElements}
+                            enhancedPrompt={analysisResult.refinedScene}
+                            onAutoExtract={handleExtractElements}
+                          />
+
+                          <div className="flex gap-3 pt-4">
+                            <Button
+                              onClick={() => setActiveTab('review')}
+                              variant="outline"
+                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                              Back to Review
+                            </Button>
+                            <Button
                               onClick={() => setActiveTab('storyboard')}
                               className="gap-2 bg-[#c084fc] hover:bg-[#a855f7] text-black"
                             >
@@ -646,20 +903,66 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
 
                           <div className="flex gap-3 pt-4">
                             <Button
+                              onClick={() => setActiveTab('audio')}
+                              className="gap-2 bg-[#f59e0b] hover:bg-[#d97706] text-black"
+                            >
+                              <Music className="w-4 h-4" />
+                              Add Audio & Music
+                            </Button>
+                            <Button
                               onClick={() => setActiveTab('video')}
                               disabled={analysisResult.storyboardFramePrompts.filter(f => f.imageUrl).length === 0}
+                              variant="outline"
+                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
+                            >
+                              <Video className="w-4 h-4" />
+                              Skip to Video
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </TabsContent>
+
+                    {/* AUDIO TAB */}
+                    <TabsContent value="audio" className="mt-0 data-[state=inactive]:hidden">
+                      {analysisResult && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="space-y-6"
+                        >
+                          <div>
+                            <h2 className="text-lg font-semibold text-white mb-1">
+                              Audio Studio
+                            </h2>
+                            <p className="text-sm text-[#52526b]">
+                              Create background music and AI voiceover for your video.
+                            </p>
+                          </div>
+
+                          <AudioStudio
+                            audioMood={analysisResult.audioMood}
+                            sceneDescription={analysisResult.refinedScene}
+                            enhancedPrompt={analysisResult.refinedScene}
+                            onAudioGenerated={handleAudioGenerated}
+                            onVoiceoverGenerated={handleVoiceoverGenerated}
+                          />
+
+                          <div className="flex gap-3 pt-4">
+                            <Button
+                              onClick={() => setActiveTab('storyboard')}
+                              variant="outline"
+                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
+                            >
+                              <ImageIcon className="w-4 h-4" />
+                              Back to Storyboard
+                            </Button>
+                            <Button
+                              onClick={() => setActiveTab('video')}
                               className="gap-2 bg-gradient-to-r from-[#4ade80] to-[#38bdf8] hover:opacity-90 text-black"
                             >
                               <Video className="w-4 h-4" />
                               Generate Video
-                            </Button>
-                            <Button
-                              onClick={() => setActiveTab('audio')}
-                              variant="outline"
-                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
-                            >
-                              <Music className="w-4 h-4" />
-                              Add Audio
                             </Button>
                           </div>
                         </motion.div>
@@ -699,52 +1002,6 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
                             >
                               <Music className="w-4 h-4" />
                               Edit Audio
-                            </Button>
-                            <Button
-                              onClick={() => setActiveTab('export')}
-                              className="gap-2 bg-[#38bdf8] hover:bg-[#0ea5e9] text-black"
-                            >
-                              <Package className="w-4 h-4" />
-                              Export Project
-                            </Button>
-                          </div>
-                        </motion.div>
-                      )}
-                    </TabsContent>
-
-                    {/* AUDIO TAB */}
-                    <TabsContent value="audio" className="mt-0 data-[state=inactive]:hidden">
-                      {analysisResult && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="space-y-6"
-                        >
-                          <div>
-                            <h2 className="text-lg font-semibold text-white mb-1">
-                              Audio Studio
-                            </h2>
-                            <p className="text-sm text-[#52526b]">
-                              Create background music and AI voiceover for your video.
-                            </p>
-                          </div>
-
-                          <AudioStudio
-                            audioMood={analysisResult.audioMood}
-                            sceneDescription={analysisResult.refinedScene}
-                            enhancedPrompt={analysisResult.refinedScene}
-                            onAudioGenerated={handleAudioGenerated}
-                            onVoiceoverGenerated={handleVoiceoverGenerated}
-                          />
-
-                          <div className="flex gap-3 pt-4">
-                            <Button
-                              onClick={() => setActiveTab('video')}
-                              variant="outline"
-                              className="gap-2 border-white/10 text-[#a1a1bc] hover:text-white"
-                            >
-                              <Video className="w-4 h-4" />
-                              Back to Video
                             </Button>
                             <Button
                               onClick={() => setActiveTab('export')}

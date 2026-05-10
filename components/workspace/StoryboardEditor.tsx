@@ -95,6 +95,8 @@ export function StoryboardEditor({
     onFramesChange(reorderedFrames)
   }, [onFramesChange])
 
+  const [pendingNewFrame, setPendingNewFrame] = useState<StoryboardFrame | null>(null)
+
   const handleAddFrame = useCallback(() => {
     const newFrame: StoryboardFrame = {
       id: uuid(),
@@ -107,11 +109,11 @@ export function StoryboardEditor({
       status: 'pending',
       duration: 3
     }
-    onFramesChange([...frames, newFrame])
+    // Don't add to frames yet - store as pending
+    setPendingNewFrame(newFrame)
     setEditingFrame(newFrame)
     setIsEditDialogOpen(true)
-    toast.success('New frame added')
-  }, [frames, onFramesChange])
+  }, [frames.length])
 
   const handleDeleteFrame = useCallback((frameId: string) => {
     const updatedFrames = frames
@@ -147,21 +149,33 @@ export function StoryboardEditor({
   const handleSaveFrame = useCallback(() => {
     if (!editingFrame) return
     
-    const updatedFrames = frames.map(f => 
-      f.id === editingFrame.id ? { ...editingFrame, updatedAt: Date.now() } : f
-    )
-    
-    // If this is a new frame (not in the existing list), it was already added
-    if (!frames.find(f => f.id === editingFrame.id)) {
-      // Frame was already added via handleAddFrame
+    // Check if this is a new pending frame
+    if (pendingNewFrame && pendingNewFrame.id === editingFrame.id) {
+      // Add the new frame to the list
+      onFramesChange([...frames, { ...editingFrame, updatedAt: Date.now() }])
+      setPendingNewFrame(null)
+      toast.success('New frame added')
     } else {
+      // Update existing frame
+      const updatedFrames = frames.map(f => 
+        f.id === editingFrame.id ? { ...editingFrame, updatedAt: Date.now() } : f
+      )
       onFramesChange(updatedFrames)
+      toast.success('Frame updated')
     }
     
     setIsEditDialogOpen(false)
     setEditingFrame(null)
-    toast.success('Frame updated')
-  }, [editingFrame, frames, onFramesChange])
+  }, [editingFrame, frames, onFramesChange, pendingNewFrame])
+  
+  const handleCancelEdit = useCallback(() => {
+    // If we were adding a new frame, discard it
+    if (pendingNewFrame) {
+      setPendingNewFrame(null)
+    }
+    setIsEditDialogOpen(false)
+    setEditingFrame(null)
+  }, [pendingNewFrame])
 
   const handleMoveFrame = useCallback((frameId: string, direction: 'up' | 'down') => {
     const index = frames.findIndex(f => f.id === frameId)
@@ -551,7 +565,7 @@ export function StoryboardEditor({
 
           <DialogFooter>
             <Button
-              onClick={() => setIsEditDialogOpen(false)}
+              onClick={handleCancelEdit}
               variant="outline"
               className="border-white/10 text-[#a1a1bc]"
             >
@@ -562,7 +576,7 @@ export function StoryboardEditor({
               className="bg-[#c084fc] hover:bg-[#a855f7] text-black"
             >
               <Check className="w-4 h-4 mr-2" />
-              Save Changes
+              {pendingNewFrame ? 'Add Frame' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>

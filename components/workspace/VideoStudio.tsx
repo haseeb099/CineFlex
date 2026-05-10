@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Video,
@@ -72,17 +72,23 @@ export function VideoStudio({
   const audioRef = useRef<HTMLAudioElement>(null)
   const playbackInterval = useRef<NodeJS.Timeout | null>(null)
 
-  // Get frames with images
-  const framesWithImages = frames.filter(f => f.imageUrl)
+  // Get frames with images - memoize to prevent infinite loops
+  const framesWithImages = useMemo(() => frames.filter(f => f.imageUrl), [frames])
 
-  // Calculate total duration from frames
+  // Calculate total duration from frames - use stable dependency
   useEffect(() => {
+    if (framesWithImages.length === 0) {
+      setTotalDuration(0)
+      setVideoClips([])
+      return
+    }
+    
     const duration = framesWithImages.reduce((acc, f) => acc + (f.duration || 3), 0)
     setTotalDuration(duration)
     
     // Build timeline clips from frames
     let startTime = 0
-    const clips: TimelineClip[] = framesWithImages.map((frame, index) => {
+    const clips: TimelineClip[] = framesWithImages.map((frame) => {
       const clip: TimelineClip = {
         id: frame.id,
         type: 'image',
@@ -227,14 +233,14 @@ export function VideoStudio({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageUrl: framesWithImages[0].imageUrl,
-          sceneDescription: videoPrompt,
-          videoPrompts: framesWithImages.map((f, i) => ({
-            sceneNumber: i + 1,
+          frames: framesWithImages.map((f, i) => ({
+            frameNumber: i + 1,
+            imageUrl: f.imageUrl,
             prompt: f.prompt || f.description,
-            duration: f.duration || 3,
-            style: 'cinematic'
-          }))
+            duration: f.duration || 4
+          })),
+          sceneDescription: videoPrompt,
+          motionStrength: 'normal'
         })
       })
 
@@ -247,22 +253,63 @@ export function VideoStudio({
         setGenerationStep('Processing video...')
         setGenerationProgress(80)
         
-        if (data.videos?.[0]?.videoUrl) {
-          setGeneratedVideoUrl(data.videos[0].videoUrl)
-          setPreviewMode('video')
-          onVideoGenerated?.(data.videos[0].videoUrl)
+        // Check for clips (new format) or videos (old format)
+        const clips = data.clips || data.videos
+        const firstClipWithVideo = clips?.find((c: { videoUrl?: string }) => c.videoUrl)
+        
+        if (clips && clips.length > 0) {
+          // Check if we got actual video URLs (mp4) or images
+          const hasRealVideos = clips.some((c: { videoUrl?: string }) => 
+            c.videoUrl && (c.videoUrl.endsWith('.mp4') || c.videoUrl.includes('video') || data.mode === 'video')
+          )
+          
+          // Update frames with video/enhanced images
+          const enhancedFrames = clips.map((clip: { videoUrl?: string; sourceImage?: string; frameNumber: number; duration?: number; status?: string }) => ({
+            ...framesWithImages.find(f => f.frameNumber === clip.frameNumber) || framesWithImages[clip.frameNumber - 1],
+            imageUrl: clip.videoUrl || clip.sourceImage,
+            videoUrl: clip.status === 'done' ? clip.videoUrl : null,
+            duration: clip.duration || 4,
+            enhanced: true,
+            isVideo: clip.status === 'done' && hasRealVideos
+          }))
+          
+          // Store clips for playback
+          setVideoClips(enhancedFrames.map((f, i) => ({
+            id: f?.id || `clip-${i}`,
+            type: (f?.isVideo ? 'video' : 'image') as 'video' | 'image',
+            startTime: enhancedFrames.slice(0, i).reduce((sum, ef) => sum + (ef?.duration || 4), 0),
+            duration: f?.duration || 4,
+            sourceUrl: f?.videoUrl || f?.imageUrl,
+            frame: f
+          })))
           
           setGenerationProgress(100)
           setGenerationStep('Complete!')
-          toast.success(data.mode === 'demo' ? 'Demo video ready!' : 'Video generated successfully!')
+          
+          if (hasRealVideos && data.mode === 'video') {
+            // Real AI video generated
+            setPreviewMode('video')
+            setGeneratedVideoUrl(clips[0]?.videoUrl || null)
+            toast.success(`AI Video generated! ${data.successCount || clips.length} video clips ready.`)
+          } else {
+            // Enhanced slideshow mode
+            setPreviewMode('slideshow')
+            toast.success(`Cinematic slideshow ready! ${clips.length} clips with Ken Burns effects.`)
+          }
+        } else if (data.mode === 'error') {
+          // API configured but generation failed
+          setGenerationProgress(100)
+          setGenerationStep('Using slideshow mode')
+          toast.info(data.message || 'Video generation in progress. Using slideshow preview.')
         } else {
-          // Fallback to slideshow mode with demo video
+          // Fallback to slideshow mode
           setGenerationProgress(100)
           setGenerationStep('Complete!')
           toast.info('Using slideshow preview mode')
         }
       } else {
-        throw new Error('Video generation failed')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || 'Video generation failed')
       }
     } catch (error) {
       console.error('[VideoStudio] Error:', error)
@@ -331,18 +378,34 @@ export function VideoStudio({
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentFrameIndex}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.5 }}
-                className="absolute inset-0"
+                initial={{ opacity: 0, scale: 1.1 }}
+                animate={{ 
+                  opacity: 1, 
+                  scale: 1,
+                  x: currentFrameIndex % 2 === 0 ? [0, -20, 0] : [0, 20, 0],
+                  y: currentFrameIndex % 3 === 0 ? [0, -10, 0] : [0, 10, 0]
+                }}
+                exit={{ opacity: 0, scale: 1.05 }}
+                transition={{ 
+                  opacity: { duration: 0.8 },
+                  scale: { duration: framesWithImages[currentFrameIndex]?.duration || 3, ease: "easeOut" },
+                  x: { duration: framesWithImages[currentFrameIndex]?.duration || 3, ease: "linear" },
+                  y: { duration: framesWithImages[currentFrameIndex]?.duration || 3, ease: "linear" }
+                }}
+                className="absolute inset-0 overflow-hidden"
               >
                 {framesWithImages[currentFrameIndex]?.imageUrl && (
-                  <img
+                  <motion.img
                     src={framesWithImages[currentFrameIndex].imageUrl}
                     alt={`Frame ${currentFrameIndex + 1}`}
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-cover"
                     crossOrigin="anonymous"
+                    initial={{ scale: 1 }}
+                    animate={{ scale: 1.15 }}
+                    transition={{ 
+                      duration: framesWithImages[currentFrameIndex]?.duration || 3,
+                      ease: "linear"
+                    }}
                   />
                 )}
               </motion.div>

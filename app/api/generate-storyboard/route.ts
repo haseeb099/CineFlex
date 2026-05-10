@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/utils/rateLimit'
 
 interface FramePrompt {
+  id?: string
   frameNumber: number
   prompt: string
   shotType?: string
@@ -9,179 +10,155 @@ interface FramePrompt {
   description?: string
 }
 
+const SHOT_DESCRIPTIONS: Record<string, string> = {
+  'ECU': 'extreme close-up, macro detail',
+  'CU': 'close-up, face filling frame',
+  'MCU': 'medium close-up, chest to head',
+  'MS': 'medium shot, waist up',
+  'WS': 'wide shot, full scene',
+  'EWS': 'extreme wide shot, epic scale',
+  'POV': 'point of view, first person',
+  'OTS': 'over the shoulder',
+  'LOW': 'low angle, looking up',
+  'HIGH': 'high angle, looking down',
+  'AERIAL': 'aerial shot, birds eye',
+}
+
+const CAMERA_DESCRIPTIONS: Record<string, string> = {
+  'STATIC': 'static locked camera',
+  'PAN': 'horizontal pan',
+  'TILT': 'vertical tilt',
+  'DOLLY': 'dolly movement',
+  'TRACK': 'tracking shot',
+  'CRANE': 'crane shot',
+  'HANDHELD': 'handheld camera',
+  'STEADICAM': 'steadicam glide',
+}
+
+function buildCinematicPrompt(fp: FramePrompt, characterLooks?: string, settingDetails?: string): string {
+  const shotDesc = SHOT_DESCRIPTIONS[fp.shotType || 'MS'] || 'medium shot'
+  const cameraDesc = CAMERA_DESCRIPTIONS[fp.cameraMove || 'STATIC'] || 'static camera'
+  
+  let prompt = `Cinematic film still, ${shotDesc}, ${cameraDesc}, professional cinematography. ${fp.prompt || fp.description}`
+  
+  if (characterLooks) prompt += `. Characters: ${characterLooks}`
+  if (settingDetails) prompt += `. Setting: ${settingDetails}`
+  
+  prompt += '. Dramatic lighting, high production value, 35mm film, photorealistic, movie quality, 8k.'
+  
+  return prompt
+}
+
 export async function POST(req: NextRequest) {
   try {
-    // Rate limiting
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
     const rateLimitResult = checkRateLimit(ip, 'storyboard')
     if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        { error: `Rate limit exceeded. Wait ${Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)} seconds.` },
-        { status: 429 }
-      )
+      return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
     }
 
-    const { framePrompts } = await req.json()
+    const { framePrompts, characterLooks, settingDetails } = await req.json()
 
     if (!framePrompts || !Array.isArray(framePrompts)) {
-      return NextResponse.json(
-        { error: 'Frame prompts required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Frame prompts required' }, { status: 400 })
     }
 
-    // If no Runware key, return high-quality placeholder images using Picsum Photos
-    if (!process.env.RUNWARE_API_KEY) {
-      // Generate unique cinematic placeholder images using Picsum Photos
-      // Each frame gets a unique seed based on its content for consistent regeneration
-      const placeholders = framePrompts.map((fp: FramePrompt, index: number) => {
-        // Create a unique seed based on prompt content for consistent images
-        const seed = `frame-${fp.frameNumber || index + 1}-${(fp.prompt || '').slice(0, 20).replace(/\s/g, '')}`
-        // Picsum provides reliable random images with grayscale option for cinematic feel
-        const imageUrl = `https://picsum.photos/seed/${encodeURIComponent(seed)}/1280/720`
-        
-        return {
-          frameNumber: fp.frameNumber || index + 1,
-          imageUrl,
-          prompt: fp.prompt,
-          shotType: fp.shotType || 'WS',
-          cameraMove: fp.cameraMove || 'STATIC',
-          description: fp.description || fp.prompt || '',
-          status: 'done',
-          mode: 'placeholder'
-        }
-      })
-
-      return NextResponse.json({ 
-        frames: placeholders, 
-        mode: 'placeholder',
-        message: 'Using placeholder images. Add RUNWARE_API_KEY for AI-generated storyboards.'
-      })
-    }
-
-    // Runware API - generate images with FLUX model
+    const runwareKey = process.env.RUNWARE_API_KEY
     const generatedFrames = []
+    let apiUsed = 'pollinations'
 
-    for (const fp of framePrompts) {
-      const shotTypeDescriptions: Record<string, string> = {
-        'ECU': 'extreme close-up shot focusing on tiny details',
-        'CU': 'close-up shot on face or object',
-        'MCU': 'medium close-up from chest up',
-        'MS': 'medium shot from waist up',
-        'MWS': 'medium wide shot showing subject and environment',
-        'WS': 'wide shot establishing the full scene',
-        'EWS': 'extreme wide shot vast landscape or space',
-        'POV': 'point of view shot from character perspective',
-        'OTS': 'over the shoulder shot',
-        'INSERT': 'insert shot of specific detail or object',
-      }
+    console.log('[storyboard] Starting generation for', framePrompts.length, 'frames')
+    console.log('[storyboard] Runware key:', runwareKey ? 'configured' : 'NOT SET')
 
-      const cameraDescriptions: Record<string, string> = {
-        'STATIC': 'static camera on tripod',
-        'PAN': 'smooth horizontal pan',
-        'TILT': 'vertical tilt movement',
-        'DOLLY': 'dolly tracking forward or backward',
-        'TRACK': 'lateral tracking shot',
-        'CRANE': 'crane shot moving vertically',
-        'HANDHELD': 'handheld documentary style',
-        'STEADICAM': 'smooth steadicam following',
-        'DRONE': 'aerial drone perspective',
-      }
+    for (const fp of framePrompts as FramePrompt[]) {
+      const cinematicPrompt = buildCinematicPrompt(fp, characterLooks, settingDetails)
+      let imageUrl: string | null = null
 
-      const shotDesc = shotTypeDescriptions[fp.shotType || 'WS'] || 'wide establishing shot'
-      const cameraDesc = cameraDescriptions[fp.cameraMove || 'STATIC'] || 'static composition'
-
-      const cinematicPrompt = `Cinematic film still, professional cinematography, 35mm film grain, anamorphic lens bokeh, ${shotDesc}, ${cameraDesc}: ${fp.prompt}. Dramatic lighting, high production value, movie scene, 2.39:1 aspect ratio composition, shallow depth of field, color graded, photorealistic.`
-
-      try {
-        const response = await fetch('https://api.runware.ai/v1', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.RUNWARE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify([{
-            taskType: 'imageInference',
-            taskUUID: `frame-${fp.frameNumber}-${Date.now()}`,
-            positivePrompt: cinematicPrompt,
-            negativePrompt: 'text, watermark, logo, signature, blurry, low quality, amateur, cartoon, anime, illustration, drawing, painting, cgi, 3d render, oversaturated, overexposed, underexposed',
-            model: 'runware:100@1', // FLUX model for high quality
-            width: 1280,
-            height: 720,
-            numberResults: 1,
-            outputType: 'URL',
-            steps: 30,
-            CFGScale: 7.5,
-            scheduler: 'FlowMatchEulerDiscreteScheduler',
-          }]),
-        })
-
-        if (!response.ok) {
-          const errorText = await response.text()
-          console.error(`[storyboard] Runware error for frame ${fp.frameNumber}:`, response.status, errorText)
+      // Try Runware API directly (no SDK)
+      if (runwareKey) {
+        try {
+          console.log(`[storyboard] Frame ${fp.frameNumber}: Calling Runware API...`)
           
-          // Use Picsum fallback for this frame
-          const fallbackSeed = `fallback-${fp.frameNumber}-${Date.now()}`
-          generatedFrames.push({
-            frameNumber: fp.frameNumber,
-            imageUrl: `https://picsum.photos/seed/${encodeURIComponent(fallbackSeed)}/1280/720`,
-            prompt: fp.prompt,
-            shotType: fp.shotType || 'WS',
-            cameraMove: fp.cameraMove || 'STATIC',
-            description: fp.description || '',
-            status: 'done',
-            mode: 'fallback'
+          const response = await fetch('https://api.runware.ai/v1', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${runwareKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify([{
+              taskType: 'imageInference',
+              taskUUID: crypto.randomUUID(),
+              positivePrompt: cinematicPrompt,
+              model: 'runware:100@1', // FLUX.1 Schnell
+              width: 1280,
+              height: 768, // Must be multiple of 64
+              numberResults: 1,
+              outputFormat: 'WEBP',
+              steps: 4,
+              CFGScale: 7.5,
+            }]),
           })
-          continue
+
+          if (response.ok) {
+            const data = await response.json()
+            console.log(`[storyboard] Frame ${fp.frameNumber} Runware response:`, JSON.stringify(data).slice(0, 200))
+            
+            // Handle response format
+            if (data?.data?.[0]?.imageURL) {
+              imageUrl = data.data[0].imageURL
+              apiUsed = 'runware'
+              console.log(`[storyboard] Frame ${fp.frameNumber}: Runware SUCCESS`)
+            } else if (Array.isArray(data) && data[0]?.imageURL) {
+              imageUrl = data[0].imageURL
+              apiUsed = 'runware'
+              console.log(`[storyboard] Frame ${fp.frameNumber}: Runware SUCCESS (array format)`)
+            }
+          } else {
+            const errText = await response.text()
+            console.error(`[storyboard] Frame ${fp.frameNumber}: Runware HTTP ${response.status}:`, errText.slice(0, 300))
+          }
+        } catch (err) {
+          console.error(`[storyboard] Frame ${fp.frameNumber}: Runware error:`, err instanceof Error ? err.message : err)
         }
-
-        const data = await response.json()
-        
-        // Runware returns array of results
-        const imageUrl = Array.isArray(data) && data[0]?.imageURL 
-          ? data[0].imageURL 
-          : data?.imageURL || data?.data?.[0]?.imageURL
-
-        const generatedSeed = `gen-${fp.frameNumber}-${Date.now()}`
-        generatedFrames.push({
-          frameNumber: fp.frameNumber,
-          imageUrl: imageUrl || `https://picsum.photos/seed/${encodeURIComponent(generatedSeed)}/1280/720`,
-          prompt: fp.prompt,
-          shotType: fp.shotType || 'WS',
-          cameraMove: fp.cameraMove || 'STATIC',
-          description: fp.description || '',
-          status: 'done',
-          mode: imageUrl ? 'generated' : 'fallback'
-        })
-      } catch (frameError) {
-        console.error(`[storyboard] Error generating frame ${fp.frameNumber}:`, frameError)
-        const errorSeed = `error-${fp.frameNumber}-${Date.now()}`
-        generatedFrames.push({
-          frameNumber: fp.frameNumber,
-          imageUrl: `https://picsum.photos/seed/${encodeURIComponent(errorSeed)}/1280/720`,
-          prompt: fp.prompt,
-          shotType: fp.shotType || 'WS',
-          cameraMove: fp.cameraMove || 'STATIC',
-          description: fp.description || '',
-          status: 'done',
-          mode: 'fallback'
-        })
       }
+
+      // Fallback to Pollinations.ai (FREE, always works)
+      if (!imageUrl) {
+        console.log(`[storyboard] Frame ${fp.frameNumber}: Using Pollinations fallback`)
+        const encodedPrompt = encodeURIComponent(cinematicPrompt.slice(0, 800))
+        const seed = Math.floor(Math.random() * 1000000) + fp.frameNumber
+        imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&seed=${seed}&nologo=true&model=flux`
+        apiUsed = 'pollinations'
+      }
+
+      generatedFrames.push({
+        id: fp.id || `frame-${fp.frameNumber}-${Date.now()}`,
+        frameNumber: fp.frameNumber,
+        imageUrl,
+        prompt: fp.prompt,
+        cinematicPrompt,
+        shotType: fp.shotType || 'MS',
+        cameraMove: fp.cameraMove || 'STATIC',
+        description: fp.description || fp.prompt || '',
+        status: 'done',
+      })
     }
 
-    const generatedCount = generatedFrames.filter(f => f.mode === 'generated').length
+    console.log('[storyboard] Generation complete:', generatedFrames.length, 'frames using', apiUsed)
+    
     return NextResponse.json({ 
       frames: generatedFrames, 
-      mode: generatedCount > 0 ? 'generated' : 'fallback',
-      message: `Generated ${generatedCount}/${generatedFrames.length} frames with AI`
+      mode: 'generated',
+      successCount: generatedFrames.length,
+      totalCount: generatedFrames.length,
+      message: `Generated ${generatedFrames.length} frames`,
+      apiUsed
     })
+
   } catch (err) {
-    console.error('[storyboard] error:', err instanceof Error ? err.message : 'unknown')
+    console.error('[storyboard] error:', err)
     return NextResponse.json(
-      { 
-        error: 'Storyboard generation failed',
-        message: err instanceof Error ? err.message : 'Unknown error'
-      },
+      { error: 'Storyboard generation failed', message: err instanceof Error ? err.message : 'Unknown error', frames: [], mode: 'error' },
       { status: 500 }
     )
   }
