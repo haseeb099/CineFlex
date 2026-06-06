@@ -8,6 +8,7 @@ CineFlex is a production-ready agentic AI filmmaking operating system that uses 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge&logo=typescript)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.0-38bdf8?style=for-the-badge&logo=tailwindcss)
+![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)
 
 ---
 
@@ -341,3 +342,14 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 Built with love for filmmakers, by filmmakers. 🎬
+
+---
+
+### Contact
+
+For questions, feedback, or collaborations, please reach out to Muhammad Haseeb Rafique: 
+- **GitHub**: [m-haseeb-rafique](https://github.com/m-haseeb-rafique)
+- **LinkedIn**: [muhammadhaseebrafique](https://www.linkedin.com/in/muhammadhaseebrafique/)
+- **Email**: [your-email@example.com](mailto:your-email@example.com)
+
+Project Link: [https://github.com/yourusername/cineflex](https://github.com/yourusername/cineflex)
